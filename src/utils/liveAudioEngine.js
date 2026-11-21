@@ -7,18 +7,21 @@ function bytesToBase64(bytes) {
   return btoa(binary)
 }
 
-function base64ToInt16(base64) {
+function base64ToBytes(base64) {
   const binary = atob(base64)
   const len = binary.length
   const bytes = new Uint8Array(len)
   for (let i = 0; i < len; i++) {
     bytes[i] = binary.charCodeAt(i)
   }
-  return new Int16Array(bytes.buffer)
+  return bytes
 }
 
 /**
- * Gapless real-time 24kHz PCM audio player with instant barge-in interruption.
+ * Gapless real-time 24kHz PCM audio player with:
+ * - Default hardware AudioContext sample rate (avoids silent playback on Windows / Opera GX)
+ * - Odd-byte chunk carry-over (prevents RangeError on small/odd base64 frames)
+ * - Instant barge-in interruption
  */
 export class PcmStreamPlayer {
   constructor(onPlayingChange) {
@@ -27,12 +30,13 @@ export class PcmStreamPlayer {
     this.activeSources = new Set()
     this.onPlayingChange = onPlayingChange
     this.muted = false
+    this.leftoverByte = null
   }
 
   ensureContext() {
     if (!this.ctx || this.ctx.state === 'closed') {
       const AudioCtx = window.AudioContext || window.webkitAudioContext
-      this.ctx = new AudioCtx({ sampleRate: 24000 })
+      this.ctx = new AudioCtx()
       this.nextTime = 0
     }
     if (this.ctx.state === 'suspended') {
@@ -49,22 +53,43 @@ export class PcmStreamPlayer {
   enqueueBase64(base64Pcm, sampleRate = 24000) {
     if (this.muted || !base64Pcm) return
     const ctx = this.ensureContext()
-    const int16 = base64ToInt16(base64Pcm)
-    if (int16.length === 0) return
-
-    const float32 = new Float32Array(int16.length)
-    for (let i = 0; i < int16.length; i++) {
-      float32[i] = int16[i] / 32768
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {})
     }
 
-    const buffer = ctx.createBuffer(1, float32.length, sampleRate)
+    const raw = base64ToBytes(base64Pcm)
+    let combined
+    if (this.leftoverByte !== null) {
+      combined = new Uint8Array(raw.length + 1)
+      combined[0] = this.leftoverByte
+      combined.set(raw, 1)
+      this.leftoverByte = null
+    } else {
+      combined = raw
+    }
+
+    if (combined.length % 2 === 1) {
+      this.leftoverByte = combined[combined.length - 1]
+      combined = combined.subarray(0, combined.length - 1)
+    }
+
+    const sampleCount = combined.length / 2
+    if (sampleCount === 0) return
+
+    const view = new DataView(combined.buffer, combined.byteOffset, combined.byteLength)
+    const float32 = new Float32Array(sampleCount)
+    for (let i = 0; i < sampleCount; i++) {
+      float32[i] = view.getInt16(i * 2, true) / 32768
+    }
+
+    const buffer = ctx.createBuffer(1, sampleCount, sampleRate)
     buffer.copyToChannel(float32, 0)
 
     const source = ctx.createBufferSource()
     source.buffer = buffer
     source.connect(ctx.destination)
 
-    const startAt = Math.max(ctx.currentTime + 0.015, this.nextTime)
+    const startAt = Math.max(ctx.currentTime + 0.02, this.nextTime)
     this.nextTime = startAt + buffer.duration
 
     this.activeSources.add(source)
@@ -92,6 +117,7 @@ export class PcmStreamPlayer {
     })
     this.activeSources.clear()
     this.nextTime = 0
+    this.leftoverByte = null
     this.onPlayingChange?.(false)
   }
 
@@ -106,9 +132,8 @@ export class PcmStreamPlayer {
 
 /**
  * Captures live microphone audio, downsamples to 16kHz Int16 PCM,
- * uses an adaptive noise gate so laptop fan/room hum doesn't block Gemini's VAD,
- * auto-signals end-of-speech ~550ms after you pause (no manual muting needed!),
- * and drives a real-time 7-bar audio meter.
+ * gently gates steady ambient laptop fan noise to clean digital zeros when idle
+ * (without dropping quiet voices), and drives a live 7-bar audio meter.
  */
 export class MicPcmStreamer {
   constructor({ onChunk, onLevels, onSpeechEnd, onUserSpeakingChange }) {
@@ -122,7 +147,7 @@ export class MicPcmStreamer {
     this.source = null
     this.muted = false
     this.running = false
-    this.noiseFloor = 0.008
+    this.noiseFloor = 0.0025
     this.isSpeaking = false
     this.lastSpeechAt = 0
   }
@@ -157,6 +182,7 @@ export class MicPcmStreamer {
     this.processor.onaudioprocess = (ev) => {
       if (!this.running) return
       const input = ev.inputBuffer.getChannelData(0)
+      const outLen = Math.floor(input.length / ratio)
 
       if (this.muted) {
         if (this.isSpeaking) {
@@ -165,14 +191,12 @@ export class MicPcmStreamer {
           this.onSpeechEnd?.()
         }
         this.onLevels?.([14, 14, 14, 14, 14, 14, 14])
-        // Keep streaming digital silence while muted so any in-progress turn closes cleanly
-        const outLen = Math.floor(input.length / ratio)
         const silencePcm = new Int16Array(outLen)
         this.onChunk?.(bytesToBase64(new Uint8Array(silencePcm.buffer)))
         return
       }
 
-      // Compute RMS energy and 7 visual bars
+      // Compute RMS energy and 7 responsive visual bars
       let sqSum = 0
       for (let i = 0; i < input.length; i++) {
         sqSum += input[i] * input[i]
@@ -188,15 +212,13 @@ export class MicPcmStreamer {
           sum += Math.abs(input[i])
         }
         const avg = sum / step
-        bars.push(Math.max(16, Math.min(100, Math.round(avg * 420))))
+        bars.push(Math.max(16, Math.min(100, Math.round(avg * 650))))
       }
       this.onLevels?.(bars)
 
-      // Adaptive noise floor & continuous silence-gated streaming:
-      // Gemini 3.8 Live's VAD needs continuous PCM frames (digital zeros during silence)
-      // to detect end-of-speech cleanly without laptop fan noise stalling it.
+      // Gentle adaptive noise gate that works even on quiet laptop mics
       const now = performance.now()
-      const threshold = Math.max(0.012, this.noiseFloor * 2.1)
+      const threshold = Math.max(0.0038, this.noiseFloor * 1.65)
 
       if (rms > threshold) {
         this.lastSpeechAt = now
@@ -205,19 +227,17 @@ export class MicPcmStreamer {
           this.onUserSpeakingChange?.(true)
         }
       } else if (!this.isSpeaking) {
-        // Slowly calibrate ambient room/laptop fan level when idle
-        this.noiseFloor = Math.max(0.003, Math.min(0.028, this.noiseFloor * 0.96 + rms * 0.04))
+        this.noiseFloor = Math.max(0.0015, Math.min(0.018, this.noiseFloor * 0.95 + rms * 0.05))
       }
 
-      // 280ms grace tail after last voiced frame so natural pauses inside words stay smooth
-      if (this.isSpeaking && now - this.lastSpeechAt > 280) {
+      // 420ms grace tail after last voiced frame so pauses between words never clip
+      if (this.isSpeaking && now - this.lastSpeechAt > 420) {
         this.isSpeaking = false
         this.onUserSpeakingChange?.(false)
         this.onSpeechEnd?.()
       }
 
-      // Always send 16kHz Int16 PCM: real voice while speaking, pure digital zeros when silent
-      const outLen = Math.floor(input.length / ratio)
+      // Stream continuous 16kHz PCM: boosted voice while speaking, pure digital silence when paused
       const pcm = new Int16Array(outLen)
       if (this.isSpeaking) {
         for (let i = 0; i < outLen; i++) {
@@ -225,14 +245,13 @@ export class MicPcmStreamer {
           const idx0 = Math.floor(srcIdx)
           const idx1 = Math.min(idx0 + 1, input.length - 1)
           const frac = srcIdx - idx0
-          const sample = input[idx0] * (1 - frac) + input[idx1] * frac
-          const clamped = Math.max(-1, Math.min(1, sample))
-          pcm[i] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff
+          const rawSample = input[idx0] * (1 - frac) + input[idx1] * frac
+          const boosted = Math.max(-1, Math.min(1, rawSample * 1.5))
+          pcm[i] = boosted < 0 ? boosted * 0x8000 : boosted * 0x7fff
         }
       }
 
-      const b64 = bytesToBase64(new Uint8Array(pcm.buffer))
-      this.onChunk?.(b64)
+      this.onChunk?.(bytesToBase64(new Uint8Array(pcm.buffer)))
     }
 
     this.source.connect(this.processor)
@@ -277,7 +296,6 @@ export class MicPcmStreamer {
 
 /**
  * Direct WebSocket client for Gemini 3.8 Live (models/gemini-3.8-live).
- * Uses an ephemeral single-use token from /api/live-token on Vercel so the real API key stays server-side.
  */
 export class GeminiLiveClient {
   constructor({
@@ -456,17 +474,6 @@ export class GeminiLiveClient {
             mimeType: 'audio/pcm;rate=16000',
             data: base64Pcm,
           },
-        },
-      })
-    )
-  }
-
-  sendAudioStreamEnd() {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
-    this.ws.send(
-      JSON.stringify({
-        realtimeInput: {
-          audioStreamEnd: true,
         },
       })
     )
