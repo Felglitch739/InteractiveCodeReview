@@ -1,35 +1,32 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Mic, MicOff, Volume2, VolumeX, Send, X, KeyRound, MessageSquare,
-  Loader2, Square, Trash2, GraduationCap, PhoneCall, PhoneOff, Radio
+  Mic, MicOff, Volume2, VolumeX, Send, X, KeyRound, Loader2, Square, Trash2
 } from 'lucide-react'
 import { getCleanCodeString } from '../data/projectData'
 import { GeminiLiveClient, MicPcmStreamer, PcmStreamPlayer } from '../utils/liveAudioEngine'
 
 const VOICES = [
-  { id: 'Kore', label: 'Kore (Warm)' },
-  { id: 'Puck', label: 'Puck (Friendly)' },
-  { id: 'Zephyr', label: 'Zephyr (Clear)' },
-  { id: 'Fenrir', label: 'Fenrir (Professor)' },
+  { id: 'Kore', label: 'Kore' },
+  { id: 'Puck', label: 'Puck' },
+  { id: 'Zephyr', label: 'Zephyr' },
+  { id: 'Fenrir', label: 'Fenrir' },
 ]
 
 const STARTER_PROMPTS = [
   'Explain split() and [6:] simply',
   'Why does position start at -1?',
-  'Quiz me like our CSCI 1380 professor',
-  'Void vs value-returning functions in our code',
+  'Difference between void and return functions',
 ]
 
-const LIVE_SYSTEM_INSTRUCTION = `You are a friendly, fast CSCI 1380 Python voice tutor helping Jeremy Hernández, Sara Astorga, and Felix Martinez understand and present their Final Project Prompt #8 ("Student Club Member Directory").
-- Keep spoken answers natural, warm, and short (2 to 4 sentences).
+const LIVE_SYSTEM_INSTRUCTION = `You are a calm, concise CSCI 1380 Python study tutor helping Jeremy Hernández, Sara Astorga, and Felix Martinez understand and present their Final Project Prompt #8 ("Student Club Member Directory").
+- Keep answers natural, clear, and concise (2 to 4 sentences).
 - Reply in English by default, or Spanish if the student speaks or writes in Spanish.
 - Stick strictly to basic Python from CSCI 1380 (lists, while, for, if/elif/else, functions, open/read/write/close, replace, split, string slicing [0:6] and [6:]). Never suggest try/except, lambdas, classes, or list comprehensions.
-- When acting as a mock CSCI 1380 professor, ask ONE short presentation question and wait for their answer, then give quick encouraging feedback.
 Here is their exact code:
 ${getCleanCodeString()}`
 
-function FormattedText({ text }) {
+function FormattedText({ text, isUser }) {
   const segments = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g)
   return (
     <>
@@ -38,7 +35,11 @@ function FormattedText({ text }) {
           return (
             <code
               key={i}
-              className="px-1.5 py-0.5 mx-0.5 rounded-md bg-zinc-950 border border-zinc-800 text-emerald-300 font-mono text-[11.5px]"
+              className={`px-1.5 py-0.5 mx-0.5 rounded font-mono text-[11.5px] ${
+                isUser
+                  ? 'bg-white/15 text-white'
+                  : 'bg-[#dfe4ec] text-[#161922]'
+              }`}
             >
               {seg.slice(1, -1)}
             </code>
@@ -46,7 +47,7 @@ function FormattedText({ text }) {
         }
         if (seg.startsWith('**') && seg.endsWith('**')) {
           return (
-            <strong key={i} className="font-semibold text-white">
+            <strong key={i} className="font-semibold">
               {seg.slice(2, -2)}
             </strong>
           )
@@ -60,7 +61,7 @@ function FormattedText({ text }) {
 const WELCOME_MSG = {
   id: 1,
   role: 'assistant',
-  text: 'Powered by **Gemini 3.8 Live**! Tap **Start Live Voice** to talk in real time like a phone call—no waiting for audio to load—or type any question below.',
+  text: 'Ask anything about your Student Club Member Directory code. Tap the microphone below to speak live, or type a question.',
 }
 
 export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClearQueued }) {
@@ -71,7 +72,6 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
   const [connecting, setConnecting] = useState(false)
   const [liveConnected, setLiveConnected] = useState(false)
   const [micActive, setMicActive] = useState(false)
-  const [micMuted, setMicMuted] = useState(false)
   const [userSpeaking, setUserSpeaking] = useState(false)
   const [modelSpeaking, setModelSpeaking] = useState(false)
   const [thinking, setThinking] = useState(false)
@@ -96,7 +96,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
 
   useEffect(() => {
     if (open) {
-      setTimeout(() => inputRef.current?.focus(), 220)
+      setTimeout(() => inputRef.current?.focus(), 200)
     } else {
       disconnectAll()
     }
@@ -130,7 +130,6 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
     micRef.current?.stop()
     micRef.current = null
     setMicActive(false)
-    setMicMuted(false)
     setUserSpeaking(false)
 
     liveClientRef.current?.close()
@@ -238,7 +237,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
       setLiveConnected(false)
       liveClientRef.current = null
       if (!getDirectKey()) setShowKeyBox(true)
-      setErrorMsg(err.message || 'Could not connect to Gemini 3.8 Live.')
+      setErrorMsg(err.message || 'Could not connect to voice service.')
       throw err
     }
   }
@@ -251,7 +250,6 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
         }
       },
       onSpeechEnd: () => {
-        // Digital silence frames now stream continuously so Gemini Live's server VAD triggers automatically
         if (liveClientRef.current?.ready) {
           setThinking(true)
           setTimeout(() => {
@@ -265,44 +263,34 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
       onLevels: (bars) => setMeterLevels(bars),
     })
 
-  const startLiveCall = async () => {
+  const toggleMic = async () => {
+    if (micActive) {
+      // Stopping the mic cleanly lets Gemini finish replying if user just spoke
+      micRef.current?.stop()
+      micRef.current = null
+      setMicActive(false)
+      setUserSpeaking(false)
+      return
+    }
+
     setErrorMsg('')
     try {
-      // Request mic & unlock AudioContext FIRST inside the click gesture (required by Opera GX / Safari)
       ensurePlayer()
-      let mic = micRef.current
-      if (!mic) {
-        mic = createMicStreamer()
-        await mic.start()
-        micRef.current = mic
-      }
+      const mic = createMicStreamer()
+      await mic.start()
+      micRef.current = mic
       setMicActive(true)
-      setMicMuted(false)
-
       await ensureLiveSession()
     } catch (err) {
       micRef.current?.stop()
       micRef.current = null
       setMicActive(false)
       if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
-        setErrorMsg(
-          'Microphone permission was blocked. Click the lock/mic icon in your address bar, allow Microphone, and try again.'
-        )
+        setErrorMsg('Microphone permission is blocked. Allow microphone access in your browser address bar.')
       } else {
-        setErrorMsg(err?.message || 'Could not start live microphone.')
+        setErrorMsg(err?.message || 'Could not start microphone.')
       }
     }
-  }
-
-  const stopLiveCall = () => {
-    disconnectAll()
-  }
-
-  const toggleMicMute = () => {
-    if (!micRef.current) return
-    const next = !micMuted
-    setMicMuted(next)
-    micRef.current.setMuted(next)
   }
 
   const sendTextMessage = async (textToSend) => {
@@ -329,20 +317,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
   const handleVoiceChange = (nextVoice) => {
     setVoiceName(nextVoice)
     if (liveConnected || micActive) {
-      const wasInCall = micActive
       disconnectAll()
-      if (wasInCall) {
-        setTimeout(() => {
-          ensureLiveSession(nextVoice)
-            .then(async () => {
-              const mic = createMicStreamer()
-              await mic.start()
-              micRef.current = mic
-              setMicActive(true)
-            })
-            .catch(() => {})
-        }, 120)
-      }
     }
   }
 
@@ -370,107 +345,31 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
               disconnectAll()
               onClose()
             }}
-            className="fixed inset-0 bg-black/65 backdrop-blur-xs z-50"
+            className="fixed inset-0 bg-[#161922]/25 backdrop-blur-xs z-50"
           />
 
           <motion.aside
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
-            transition={{ type: 'spring', stiffness: 360, damping: 34 }}
-            className="fixed top-0 right-0 bottom-0 w-full max-w-[440px] bg-[#0d0f14] border-l border-zinc-800/90 z-50 flex flex-col shadow-2xl"
+            transition={{ type: 'spring', stiffness: 360, damping: 36 }}
+            className="fixed top-0 right-0 bottom-0 w-full max-w-[420px] bg-[#e8ecf2] border-l border-white/80 z-50 flex flex-col shadow-2xl"
           >
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3.5 border-b border-zinc-800/90 bg-zinc-900/75">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 flex items-center justify-center">
-                  <MessageSquare className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-bold text-white leading-tight">
-                      Live Voice Tutor
-                    </h3>
-                    <span
-                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold ${
-                        liveConnected
-                          ? 'bg-emerald-500/20 text-emerald-300'
-                          : 'bg-zinc-800 text-zinc-400'
-                      }`}
-                    >
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          liveConnected ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'
-                        }`}
-                      />
-                      {connecting ? 'Connecting' : liveConnected ? 'LIVE' : 'Standby'}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-zinc-400 font-mono">
-                    gemini-3.8-live · Real-time Audio
-                  </p>
-                </div>
+            {/* Minimal Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#d7dde7]">
+              <div>
+                <h3 className="text-sm font-semibold text-[#161922]">Voice Tutor</h3>
+                <p className="text-[11px] text-[#647084]">
+                  {connecting ? 'Connecting...' : liveConnected ? 'Connected · Live' : 'Ready'}
+                </p>
               </div>
 
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => {
-                    const next = !speakerMuted
-                    setSpeakerMuted(next)
-                    playerRef.current?.setMuted(next)
-                  }}
-                  title={speakerMuted ? 'Unmute tutor voice' : 'Mute tutor voice'}
-                  className={`p-1.5 rounded-lg border cursor-pointer transition ${
-                    !speakerMuted
-                      ? 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300'
-                      : 'bg-zinc-900 border-zinc-800 text-zinc-400'
-                  }`}
-                >
-                  {speakerMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-                </button>
-
-                <button
-                  onClick={clearChat}
-                  title="Reset session"
-                  className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200 cursor-pointer transition"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-
-                <button
-                  onClick={() => setShowKeyBox((v) => !v)}
-                  title="Local Gemini API Key (optional)"
-                  className={`p-1.5 rounded-lg border cursor-pointer transition ${
-                    showKeyBox || localKey
-                      ? 'bg-amber-500/15 border-amber-500/35 text-amber-300'
-                      : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200'
-                  }`}
-                >
-                  <KeyRound className="w-4 h-4" />
-                </button>
-
-                <button
-                  onClick={() => {
-                    disconnectAll()
-                    onClose()
-                  }}
-                  title="Close (Esc)"
-                  className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white cursor-pointer transition"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Voice Selector + Mock Professor */}
-            <div className="px-4 py-2.5 border-b border-zinc-800/70 bg-zinc-950/60 flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5">
-                <span className="text-[11px] text-zinc-500 font-medium">Voice:</span>
                 <select
                   value={voiceName}
                   onChange={(e) => handleVoiceChange(e.target.value)}
                   aria-label="Tutor voice"
-                  className="bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1 text-[11px] font-semibold text-zinc-200 focus:outline-none focus:border-emerald-500 cursor-pointer"
+                  className="neu-btn rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-[#161922] focus:outline-none cursor-pointer"
                 >
                   {VOICES.map((v) => (
                     <option key={v.id} value={v.id}>
@@ -478,213 +377,175 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                     </option>
                   ))}
                 </select>
-              </div>
 
-              <button
-                onClick={() =>
-                  sendTextMessage(
-                    'Act like our CSCI 1380 professor during our final presentation. Ask me ONE short question about our Student Club Member Directory code and wait for my answer.'
-                  )
-                }
-                disabled={connecting}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-amber-500/15 border border-amber-500/35 text-amber-300 hover:bg-amber-500/25 disabled:opacity-40 cursor-pointer transition shrink-0"
-              >
-                <GraduationCap className="w-3.5 h-3.5" /> Mock Professor
-              </button>
-            </div>
-
-            {/* Live Voice Call Hero Bar */}
-            <div className="px-4 py-3 border-b border-zinc-800/80 bg-[#0b0d12]">
-              {!micActive ? (
                 <button
-                  onClick={startLiveCall}
-                  disabled={connecting}
-                  className="w-full inline-flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white shadow-lg shadow-emerald-600/25 cursor-pointer transition"
+                  onClick={() => {
+                    const next = !speakerMuted
+                    setSpeakerMuted(next)
+                    playerRef.current?.setMuted(next)
+                  }}
+                  title={speakerMuted ? 'Unmute audio' : 'Mute audio'}
+                  className="neu-btn p-2 rounded-lg text-[#475569] hover:text-[#161922] cursor-pointer"
                 >
-                  {connecting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Connecting to Gemini 3.8 Live...
-                    </>
-                  ) : (
-                    <>
-                      <PhoneCall className="w-4 h-4" /> Start Live Voice Call (Talk Naturally)
-                    </>
-                  )}
+                  {speakerMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
                 </button>
-              ) : (
-                <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/35">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <Radio className="w-4 h-4 text-emerald-400 animate-pulse shrink-0" />
-                    <div className="flex items-end gap-0.5 h-5">
-                      {meterLevels.map((lvl, idx) => (
-                        <span
-                          key={idx}
-                          style={{ height: `${lvl}%` }}
-                          className={`w-1 rounded-full transition-all duration-75 ${
-                            micMuted ? 'bg-zinc-600' : 'bg-emerald-400'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                    <span className="text-xs font-semibold text-emerald-200 truncate">
-                      {micMuted
-                        ? 'Mic muted'
-                        : userSpeaking
-                        ? 'Hearing you...'
-                        : thinking
-                        ? 'Responding...'
-                        : modelSpeaking
-                        ? 'Tutor speaking (just talk to interrupt)'
-                        : 'Live — just speak!'}
-                    </span>
-                  </div>
 
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      onClick={toggleMicMute}
-                      title={micMuted ? 'Unmute mic' : 'Mute mic'}
-                      className={`p-1.5 rounded-lg border cursor-pointer transition ${
-                        micMuted
-                          ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
-                          : 'bg-zinc-900 border-zinc-700 text-zinc-200 hover:text-white'
-                      }`}
-                    >
-                      {micMuted ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
-                    </button>
-                    <button
-                      onClick={stopLiveCall}
-                      title="End Live Call"
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white cursor-pointer transition"
-                    >
-                      <PhoneOff className="w-3.5 h-3.5" /> End
-                    </button>
-                  </div>
-                </div>
-              )}
+                <button
+                  onClick={clearChat}
+                  title="Clear chat"
+                  className="neu-btn p-2 rounded-lg text-[#475569] hover:text-[#161922] cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  onClick={() => setShowKeyBox((v) => !v)}
+                  title="Local API key"
+                  className="neu-btn p-2 rounded-lg text-[#475569] hover:text-[#161922] cursor-pointer"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  onClick={() => {
+                    disconnectAll()
+                    onClose()
+                  }}
+                  title="Close"
+                  className="neu-btn p-2 rounded-lg text-[#475569] hover:text-[#161922] cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
 
-            {/* Optional Local Key Drawer */}
+            {/* Optional Local Key Box */}
             <AnimatePresence>
               {showKeyBox && (
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden border-b border-zinc-800 bg-zinc-950/90"
+                  className="overflow-hidden border-b border-[#d7dde7]"
                 >
                   <div className="p-4 space-y-2">
-                    <div className="text-xs font-semibold text-amber-300">
-                      Local Override Key (stored only in this browser tab)
+                    <div className="text-[11px] font-medium text-[#475569]">
+                      Local API Key Override (session only)
                     </div>
                     <input
                       type="password"
                       value={localKey}
                       onChange={(e) => saveLocalKey(e.target.value)}
                       placeholder="Paste Gemini API key..."
-                      className="w-full bg-zinc-900 border border-zinc-800 focus:border-emerald-500 focus:outline-none rounded-lg px-3 py-1.5 font-mono text-xs text-white"
+                      className="neu-inset w-full rounded-xl px-3 py-2 font-mono text-xs text-[#161922] focus:outline-none"
                     />
-                    <p className="text-[11px] text-zinc-400">
-                      On Vercel, <code className="text-zinc-200">GEMINI_API_KEY</code> mints single-use ephemeral tokens via <code className="text-zinc-200">/api/live-token</code> so your key stays server-side.
-                    </p>
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {/* Live Transcript Feed */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+            {/* Messages */}
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-3.5">
               {messages.map((m) => (
                 <motion.div
                   key={m.id}
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
+                  className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
                   <div
-                    className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap ${
+                    className={`max-w-[86%] rounded-2xl px-4 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap ${
                       m.role === 'user'
-                        ? 'bg-emerald-600 text-white rounded-br-sm'
-                        : 'bg-zinc-900/90 border border-zinc-800 text-zinc-200 rounded-bl-sm'
+                        ? 'bg-[#181b22] text-white rounded-br-sm shadow-md'
+                        : 'neu-card-sm text-[#1e2430] rounded-bl-sm'
                     }`}
                   >
-                    <FormattedText text={m.text} />
+                    <FormattedText text={m.text} isUser={m.role === 'user'} />
                   </div>
                 </motion.div>
               ))}
 
               {thinking && (
-                <div className="flex items-center gap-2 text-xs text-zinc-400 px-1">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
-                  Responding live...
+                <div className="flex items-center gap-2 text-xs text-[#647084] px-1">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Thinking...</span>
                 </div>
               )}
 
               {errorMsg && (
-                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/35 text-xs text-rose-200">
+                <div className="p-3 rounded-xl bg-[#fbe9ec] border border-[#f2c6ce] text-xs text-[#9f1239]">
                   {errorMsg}
                 </div>
               )}
             </div>
 
-            {/* Speaking Interrupt Bar (when typing without full mic call) */}
-            {modelSpeaking && !micActive && (
-              <div className="mx-4 mb-2 px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between text-xs text-emerald-300">
-                <div className="flex items-center gap-2">
-                  <div className="flex items-end gap-0.5 h-3.5">
-                    {[0, 1, 2, 3, 4].map((bar) => (
-                      <motion.span
-                        key={bar}
-                        animate={{ height: ['25%', '100%', '35%'] }}
-                        transition={{ repeat: Infinity, duration: 0.5, delay: bar * 0.08 }}
-                        className="w-1 bg-emerald-400 rounded-full"
+            {/* Active Voice / Speaking Strip */}
+            {(micActive || modelSpeaking) && (
+              <div className="mx-5 mb-2.5 px-3.5 py-2 rounded-xl neu-inset flex items-center justify-between text-xs text-[#161922]">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex items-end gap-0.5 h-4">
+                    {(micActive ? meterLevels : [35, 70, 50, 85, 45]).map((lvl, idx) => (
+                      <span
+                        key={idx}
+                        style={{ height: `${lvl}%` }}
+                        className="w-[3px] bg-[#181b22] rounded-full transition-all duration-75"
                       />
                     ))}
                   </div>
-                  <span className="font-semibold">Speaking live ({voiceName})...</span>
+                  <span className="font-medium text-[12px]">
+                    {userSpeaking
+                      ? 'Listening...'
+                      : modelSpeaking
+                      ? `Speaking (${voiceName})`
+                      : 'Mic active — speak now'}
+                  </span>
                 </div>
-                <button
-                  onClick={() => playerRef.current?.interrupt()}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-900 text-zinc-200 hover:text-white cursor-pointer"
-                >
-                  <Square className="w-3 h-3" /> Stop
-                </button>
+
+                {modelSpeaking && (
+                  <button
+                    onClick={() => playerRef.current?.interrupt()}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-[#647084] hover:text-[#161922] cursor-pointer"
+                  >
+                    <Square className="w-2.5 h-2.5 fill-current" /> Stop
+                  </button>
+                )}
               </div>
             )}
 
-            {/* Starter Prompts */}
-            <div className="px-4 pb-2 flex flex-wrap gap-1.5">
+            {/* Minimal Starter Suggestions */}
+            <div className="px-5 pb-2.5 flex flex-wrap gap-1.5">
               {STARTER_PROMPTS.map((p) => (
                 <button
                   key={p}
                   onClick={() => sendTextMessage(p)}
                   disabled={connecting}
-                  className="px-2.5 py-1 rounded-lg bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 disabled:opacity-40 text-[11px] text-zinc-300 hover:text-white cursor-pointer transition"
+                  className="neu-btn px-2.5 py-1 rounded-lg text-[11px] text-[#475569] hover:text-[#161922] disabled:opacity-40 cursor-pointer"
                 >
                   {p}
                 </button>
               ))}
             </div>
 
-            {/* Text Input Bar */}
+            {/* Clean Bottom Input + Mic Bar */}
             <form
               onSubmit={(e) => {
                 e.preventDefault()
                 sendTextMessage(input)
               }}
-              className="p-3.5 border-t border-zinc-800/90 bg-zinc-900/75 flex items-center gap-2"
+              className="p-4 border-t border-[#d7dde7] flex items-center gap-2.5"
             >
               <button
                 type="button"
-                onClick={micActive ? stopLiveCall : startLiveCall}
+                onClick={toggleMic}
                 disabled={connecting}
-                title={micActive ? 'End live voice' : 'Start live voice'}
-                className={`p-2.5 rounded-xl border cursor-pointer transition shrink-0 ${
+                title={micActive ? 'Stop microphone' : 'Speak live'}
+                className={`p-2.5 rounded-xl cursor-pointer transition shrink-0 ${
                   micActive
-                    ? 'bg-rose-600 border-rose-500 text-white'
-                    : 'bg-zinc-950 border-zinc-800 text-zinc-300 hover:border-emerald-500/60 hover:text-emerald-300'
+                    ? 'bg-[#be123c] text-white shadow-md'
+                    : 'neu-btn text-[#161922]'
                 }`}
               >
-                {micActive ? <PhoneOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                {micActive ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
               </button>
 
               <input
@@ -692,14 +553,14 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Type a question or tap Start Live Voice..."
-                className="flex-1 bg-zinc-950 border border-zinc-800 focus:border-emerald-500 focus:outline-none rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white"
+                placeholder="Ask a question..."
+                className="neu-inset flex-1 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-[#161922] placeholder:text-[#8793a6] focus:outline-none"
               />
 
               <button
                 type="submit"
                 disabled={connecting || !input.trim()}
-                className="p-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white cursor-pointer transition shrink-0"
+                className="neu-btn-dark p-2.5 rounded-xl disabled:opacity-35 cursor-pointer shrink-0"
               >
                 <Send className="w-4 h-4" />
               </button>

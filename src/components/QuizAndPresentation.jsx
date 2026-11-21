@@ -1,29 +1,18 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import {
-  Trophy, CheckCircle2, XCircle, Mic, Users, HelpCircle,
-  RotateCcw, Flame, ArrowRight, LayoutGrid, ClipboardCheck
-} from 'lucide-react'
+import { Check, X, Mic, RotateCcw, ArrowRight } from 'lucide-react'
 import { QUIZ_QUESTIONS, SPEAKER_SPLIT } from '../data/projectData'
 import PythonLine from './PythonLine'
 
 const CATEGORIES = ['All', 'Functions', 'File I/O', 'Loops & Lists', 'Edge Cases']
 const LETTERS = ['A', 'B', 'C', 'D']
 
-const SPEAKER_BADGE = {
-  indigo: 'bg-sky-500/15 text-sky-300 border-sky-500/35',
-  emerald: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35',
-  amber: 'bg-amber-500/15 text-amber-300 border-amber-500/35',
-}
-
 export default function QuizAndPresentation({ onAskTutor }) {
-  // Default: real one-by-one quiz mode ('quiz'), with compact corner toggle to 'all'
   const [viewMode, setViewMode] = useState('quiz')
   const [currentIdx, setCurrentIdx] = useState(0)
   const [finished, setFinished] = useState(false)
   const [answers, setAnswers] = useState({})
   const [openHints, setOpenHints] = useState({})
-  const [streak, setStreak] = useState(0)
   const [category, setCategory] = useState('All')
 
   const total = QUIZ_QUESTIONS.length
@@ -39,30 +28,19 @@ export default function QuizAndPresentation({ onAskTutor }) {
   )
   const pct = Math.round((correctCount / total) * 100)
 
-  const handleQuizAnswer = (q, optIdx) => {
-    // In Quiz Mode, lock once answered so it feels like a real quiz
+  const handleAnswer = (q, optIdx) => {
     if (viewMode === 'quiz' && answers[q.id] !== undefined) return
-    const alreadyRight = answers[q.id] === q.answer
     setAnswers((prev) => ({ ...prev, [q.id]: optIdx }))
-    if (optIdx === q.answer) {
-      if (!alreadyRight) setStreak((s) => s + 1)
-    } else {
-      setStreak(0)
-    }
   }
 
-  const goNextQuestion = () => {
-    if (currentIdx < total - 1) {
-      setCurrentIdx((i) => i + 1)
-    } else {
-      setFinished(true)
-    }
+  const goNext = () => {
+    if (currentIdx < total - 1) setCurrentIdx((i) => i + 1)
+    else setFinished(true)
   }
 
   const retakeQuiz = () => {
     setAnswers({})
     setOpenHints({})
-    setStreak(0)
     setCurrentIdx(0)
     setFinished(false)
     setViewMode('quiz')
@@ -73,107 +51,86 @@ export default function QuizAndPresentation({ onAskTutor }) {
       ? QUIZ_QUESTIONS
       : QUIZ_QUESTIONS.filter((q) => q.category === category)
 
-  const missedQuestions = QUIZ_QUESTIONS.filter(
+  const missed = QUIZ_QUESTIONS.filter(
     (q) => answers[q.id] !== undefined && answers[q.id] !== q.answer
   )
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-12">
       {/* Quiz Section */}
-      <div className="space-y-5">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-amber-400 mb-1.5">
-              <Trophy className="w-3.5 h-3.5" /> Module 05 · Interactive Assessment
-            </span>
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-white">
-              {viewMode === 'quiz' ? 'CSCI 1380 Mastery Quiz' : 'All 12 Study Questions'}
+            <h2 className="text-2xl font-semibold tracking-tight text-[#161922]">
+              {viewMode === 'quiz' ? 'Concept Check' : 'All 12 Questions'}
             </h2>
-            <p className="text-zinc-400 text-sm md:text-base mt-1 max-w-2xl">
+            <p className="text-sm text-[#647084] mt-1 max-w-xl">
               {viewMode === 'quiz'
-                ? 'Take the quiz one question at a time. Every answer reveals the true solution and explains why.'
-                : 'Browse and filter all 12 questions at once to review specific concepts before Monday.'}
+                ? 'One question at a time. Every answer reveals the correct solution and explains why.'
+                : 'Browse all 12 questions by topic to review before presenting.'}
             </p>
           </div>
 
-          {/* Compact Corner Toggle: Quiz Mode vs View All */}
-          <div className="flex items-center gap-2 self-start md:self-auto">
-            <div className="inline-flex items-center p-1 rounded-xl bg-zinc-900 border border-zinc-800">
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <div className="neu-inset p-1 rounded-xl inline-flex items-center gap-1">
               <button
                 onClick={() => setViewMode('quiz')}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition ${
-                  viewMode === 'quiz'
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'text-zinc-400 hover:text-zinc-200'
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition ${
+                  viewMode === 'quiz' ? 'neu-card-sm text-[#161922] font-semibold' : 'text-[#647084]'
                 }`}
               >
-                <ClipboardCheck className="w-3.5 h-3.5" /> Quiz Mode
+                Quiz
               </button>
               <button
                 onClick={() => setViewMode('all')}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition ${
-                  viewMode === 'all'
-                    ? 'bg-zinc-800 text-white shadow-sm'
-                    : 'text-zinc-400 hover:text-zinc-200'
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition ${
+                  viewMode === 'all' ? 'neu-card-sm text-[#161922] font-semibold' : 'text-[#647084]'
                 }`}
               >
-                <LayoutGrid className="w-3.5 h-3.5" /> View All ({total})
+                View all ({total})
               </button>
             </div>
 
             <button
               onClick={retakeQuiz}
-              title="Restart Quiz"
-              className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white cursor-pointer transition"
+              title="Restart quiz"
+              className="neu-btn p-2 rounded-xl text-[#647084] hover:text-[#161922] cursor-pointer"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* ================= VIEW 1: ONE-BY-ONE QUIZ MODE ================= */}
+        {/* One-by-One Quiz */}
         {viewMode === 'quiz' ? (
           <div className="max-w-3xl mx-auto space-y-5">
-            {/* Segmented Progress Header */}
-            <div className="rounded-2xl border border-zinc-800 studio-card p-4 space-y-3">
-              <div className="flex items-center justify-between gap-2 text-xs">
-                <div className="flex items-center gap-2.5">
-                  <span className="font-mono font-bold text-white">
-                    {finished ? 'Quiz Complete' : `Question ${currentIdx + 1} of ${total}`}
-                  </span>
-                  {streak >= 2 && !finished && (
-                    <motion.span
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold bg-amber-500/15 border border-amber-500/35 text-amber-300"
-                    >
-                      <Flame className="w-3 h-3" /> {streak} streak
-                    </motion.span>
-                  )}
-                </div>
-                <span className="font-mono text-emerald-300 font-bold">
-                  Score: {correctCount} / {answeredCount || total}
+            <div className="neu-card rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-mono font-medium text-[#161922]">
+                  {finished ? 'Completed' : `Question ${currentIdx + 1} of ${total}`}
+                </span>
+                <span className="font-mono text-[#647084]">
+                  {correctCount} / {answeredCount || total} correct
                 </span>
               </div>
 
-              {/* 12 Non-clickable Progress Segments (Real Quiz Feel) */}
               <div className="grid grid-cols-12 gap-1.5">
                 {QUIZ_QUESTIONS.map((q, idx) => {
                   const ans = answers[q.id]
-                  const isRight = ans !== undefined && ans === q.answer
-                  const isWrong = ans !== undefined && ans !== q.answer
-                  const isNow = !finished && idx === currentIdx
+                  const right = ans !== undefined && ans === q.answer
+                  const wrong = ans !== undefined && ans !== q.answer
+                  const now = !finished && idx === currentIdx
                   return (
                     <div
                       key={q.id}
-                      className={`h-2 rounded-full transition-all duration-300 ${
-                        isRight
-                          ? 'bg-emerald-500'
-                          : isWrong
-                          ? 'bg-rose-500'
-                          : isNow
-                          ? 'bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.6)]'
-                          : 'bg-zinc-800'
+                      className={`h-1.5 rounded-full transition-colors ${
+                        right
+                          ? 'bg-[#15803d]'
+                          : wrong
+                          ? 'bg-[#be123c]'
+                          : now
+                          ? 'bg-[#181b22]'
+                          : 'bg-[#cfd6e2]'
                       }`}
                     />
                   )
@@ -185,24 +142,16 @@ export default function QuizAndPresentation({ onAskTutor }) {
               {!finished ? (
                 <motion.div
                   key={currentQ.id}
-                  initial={{ opacity: 0, x: 24 }}
+                  initial={{ opacity: 0, x: 18 }}
                   animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -24 }}
-                  transition={{ duration: 0.22, ease: 'easeOut' }}
-                  className="rounded-2xl border border-zinc-800 studio-card p-6 sm:p-7 space-y-5"
+                  exit={{ opacity: 0, x: -18 }}
+                  transition={{ duration: 0.2 }}
+                  className="neu-card rounded-2xl p-6 sm:p-7 space-y-5"
                 >
-                  {/* Meta Row */}
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider bg-zinc-800 text-zinc-200">
-                        {currentQ.category}
-                      </span>
-                      {currentQ.difficulty === 'Key Question' && (
-                        <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                          Professor Favorite
-                        </span>
-                      )}
-                    </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="neu-inset px-2.5 py-1 rounded-lg text-[11px] font-medium text-[#475569]">
+                      {currentQ.category}
+                    </span>
 
                     {!currentAnswered && (
                       <button
@@ -212,22 +161,19 @@ export default function QuizAndPresentation({ onAskTutor }) {
                             [currentQ.id]: !prev[currentQ.id],
                           }))
                         }
-                        className="inline-flex items-center gap-1 text-xs font-semibold text-zinc-400 hover:text-sky-300 cursor-pointer transition"
+                        className="text-xs font-medium text-[#647084] hover:text-[#161922] cursor-pointer"
                       >
-                        <HelpCircle className="w-3.5 h-3.5" />
-                        {openHints[currentQ.id] ? 'Hide Hint' : 'Need a Hint?'}
+                        {openHints[currentQ.id] ? 'Hide hint' : 'Show hint'}
                       </button>
                     )}
                   </div>
 
-                  {/* Question Text */}
-                  <h3 className="text-lg sm:text-xl font-bold text-white leading-snug">
+                  <h3 className="text-lg font-semibold text-[#161922] leading-snug">
                     {currentQ.q}
                   </h3>
 
-                  {/* Code Snippet */}
                   {currentQ.code && (
-                    <div className="rounded-xl bg-[#0a0b0e] border border-zinc-800/90 px-4 py-3 font-mono text-xs sm:text-[13px] leading-relaxed overflow-x-auto">
+                    <div className="code-well rounded-xl px-4 py-3 font-mono text-xs leading-relaxed overflow-x-auto">
                       {currentQ.code.split('\n').map((ln, idx) => (
                         <div key={idx} className="whitespace-pre">
                           <PythonLine line={ln} />
@@ -236,101 +182,69 @@ export default function QuizAndPresentation({ onAskTutor }) {
                     </div>
                   )}
 
-                  {/* Hint Drawer */}
-                  <AnimatePresence>
-                    {openHints[currentQ.id] && !currentAnswered && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="overflow-hidden"
-                      >
-                        <div className="p-3 rounded-xl bg-sky-500/10 border border-sky-500/25 text-xs sm:text-sm text-sky-200">
-                          <strong>Hint:</strong> {currentQ.hint}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                  {openHints[currentQ.id] && !currentAnswered && (
+                    <div className="neu-inset rounded-xl p-3.5 text-xs sm:text-sm text-[#475569]">
+                      <strong className="text-[#161922]">Hint:</strong> {currentQ.hint}
+                    </div>
+                  )}
 
-                  {/* Answer Choices */}
                   <div className="space-y-2.5">
                     {currentQ.options.map((opt, oIdx) => {
                       const isChosen = currentPick === oIdx
-                      const isTrueAnswer = oIdx === currentQ.answer
-                      const revealCorrect = currentAnswered && isTrueAnswer
-                      const revealWrong = currentAnswered && isChosen && !isTrueAnswer
+                      const isTrue = oIdx === currentQ.answer
+                      const revealCorrect = currentAnswered && isTrue
+                      const revealWrong = currentAnswered && isChosen && !isTrue
 
                       return (
-                        <motion.button
+                        <button
                           key={oIdx}
-                          whileHover={!currentAnswered ? { scale: 1.008 } : undefined}
-                          whileTap={!currentAnswered ? { scale: 0.99 } : undefined}
                           disabled={currentAnswered}
-                          onClick={() => handleQuizAnswer(currentQ, oIdx)}
-                          className={`w-full text-left px-4 py-3.5 rounded-xl border text-sm font-medium transition flex items-center justify-between gap-3 ${
+                          onClick={() => handleAnswer(currentQ, oIdx)}
+                          className={`w-full text-left px-4 py-3.5 rounded-xl text-sm font-medium transition flex items-center justify-between gap-3 ${
                             revealCorrect
-                              ? 'bg-emerald-500/15 border-emerald-500/60 text-emerald-100 font-semibold'
+                              ? 'bg-[#e3f3e8] border border-[#a7d7b8] text-[#14532d] font-semibold'
                               : revealWrong
-                              ? 'bg-rose-500/15 border-rose-500/60 text-rose-100'
+                              ? 'bg-[#fbe9ec] border border-[#f2c6ce] text-[#881337]'
                               : currentAnswered
-                              ? 'bg-zinc-950/40 border-zinc-800/60 text-zinc-500'
-                              : 'bg-zinc-950/75 border-zinc-800 text-zinc-200 hover:border-emerald-500/50 hover:bg-zinc-900 cursor-pointer'
+                              ? 'neu-inset text-[#8793a6] opacity-70'
+                              : 'neu-btn text-[#161922] cursor-pointer'
                           }`}
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             <span
-                              className={`w-6 h-6 rounded-lg font-mono text-xs font-bold inline-flex items-center justify-center shrink-0 ${
+                              className={`w-6 h-6 rounded-lg font-mono text-xs font-semibold inline-flex items-center justify-center shrink-0 ${
                                 revealCorrect
-                                  ? 'bg-emerald-500 text-zinc-950'
+                                  ? 'bg-[#15803d] text-white'
                                   : revealWrong
-                                  ? 'bg-rose-500 text-white'
-                                  : 'bg-zinc-900 border border-zinc-700 text-zinc-400'
+                                  ? 'bg-[#be123c] text-white'
+                                  : 'neu-inset text-[#475569]'
                               }`}
                             >
                               {LETTERS[oIdx]}
                             </span>
                             <span className="leading-snug">{opt}</span>
                           </div>
-
-                          {revealCorrect && (
-                            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                          )}
-                          {revealWrong && <XCircle className="w-5 h-5 text-rose-400 shrink-0" />}
-                        </motion.button>
+                          {revealCorrect && <Check className="w-4 h-4 text-[#15803d] shrink-0" />}
+                          {revealWrong && <X className="w-4 h-4 text-[#be123c] shrink-0" />}
+                        </button>
                       )
                     })}
                   </div>
 
-                  {/* Detailed Feedback + Next Button */}
                   {currentAnswered && (
                     <motion.div
-                      initial={{ opacity: 0, y: 10 }}
+                      initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       className="space-y-4 pt-1"
                     >
-                      <div
-                        className={`p-4 rounded-xl border text-sm leading-relaxed space-y-2 ${
-                          currentCorrect
-                            ? 'bg-emerald-500/10 border-emerald-500/35 text-emerald-100'
-                            : 'bg-rose-500/10 border-rose-500/35 text-rose-100'
-                        }`}
-                      >
-                        <div className="font-bold flex items-center gap-2">
-                          {currentCorrect ? (
-                            <>
-                              <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Correct!
-                            </>
-                          ) : (
-                            <>
-                              <XCircle className="w-4 h-4 text-rose-400" /> Not quite — Correct Answer:{' '}
-                              <span className="text-emerald-300">
-                                {LETTERS[currentQ.answer]}) {currentQ.options[currentQ.answer]}
-                              </span>
-                            </>
-                          )}
+                      <div className="neu-inset rounded-xl p-4 text-sm space-y-1.5">
+                        <div className={`font-semibold ${currentCorrect ? 'text-[#15803d]' : 'text-[#9f1239]'}`}>
+                          {currentCorrect
+                            ? 'Correct'
+                            : `Correct answer: ${LETTERS[currentQ.answer]}) ${currentQ.options[currentQ.answer]}`}
                         </div>
-                        <p className="text-xs sm:text-sm opacity-95">
-                          <strong className="text-white">Why:</strong> {currentQ.explain}
+                        <p className="text-xs sm:text-sm text-[#2c3340] leading-relaxed">
+                          <strong className="text-[#161922]">Why:</strong> {currentQ.explain}
                         </p>
                       </div>
 
@@ -339,22 +253,22 @@ export default function QuizAndPresentation({ onAskTutor }) {
                           <button
                             onClick={() =>
                               onAskTutor(
-                                `Explain why the correct answer to "${currentQ.q}" is "${currentQ.options[currentQ.answer]}" in simple terms.`
+                                `Explain why the answer to "${currentQ.q}" is "${currentQ.options[currentQ.answer]}" simply.`
                               )
                             }
-                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-300 hover:text-sky-200 cursor-pointer transition"
+                            className="inline-flex items-center gap-1.5 text-xs font-medium text-[#475569] hover:text-[#161922] cursor-pointer"
                           >
-                            <Mic className="w-3.5 h-3.5" /> Ask Voice Tutor to explain more
+                            <Mic className="w-3.5 h-3.5" /> Ask Voice Tutor
                           </button>
                         ) : (
                           <span />
                         )}
 
                         <button
-                          onClick={goNextQuestion}
-                          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 cursor-pointer transition"
+                          onClick={goNext}
+                          className="neu-btn-dark inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-medium cursor-pointer"
                         >
-                          {currentIdx < total - 1 ? 'Next Question' : 'See Final Score'}
+                          <span>{currentIdx < total - 1 ? 'Next question' : 'See results'}</span>
                           <ArrowRight className="w-4 h-4" />
                         </button>
                       </div>
@@ -362,63 +276,53 @@ export default function QuizAndPresentation({ onAskTutor }) {
                   )}
                 </motion.div>
               ) : (
-                /* Final Quiz Results Card */
                 <motion.div
                   key="results"
-                  initial={{ opacity: 0, scale: 0.96 }}
+                  initial={{ opacity: 0, scale: 0.98 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="rounded-2xl border border-zinc-800 studio-card p-7 space-y-6 text-center"
+                  className="neu-card rounded-2xl p-8 space-y-6 text-center"
                 >
-                  <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 flex items-center justify-center">
-                    <Trophy className="w-7 h-7" />
-                  </div>
-
                   <div className="space-y-1">
-                    <div className="text-4xl font-extrabold font-mono text-white">
+                    <div className="text-4xl font-semibold font-mono text-[#161922]">
                       {correctCount} / {total}{' '}
-                      <span className="text-emerald-400 text-2xl">({pct}%)</span>
+                      <span className="text-xl text-[#647084]">({pct}%)</span>
                     </div>
-                    <p className="text-sm text-zinc-300">
+                    <p className="text-sm text-[#526075]">
                       {pct === 100
-                        ? 'Perfect score! You are 100% ready for Monday’s presentation.'
-                        : pct >= 75
-                        ? 'Strong run! Review any missed items below and you will ace the Q&A.'
-                        : 'Good warm-up! Review the missed questions below and retake the quiz.'}
+                        ? 'Every question answered correctly.'
+                        : 'Review any missed concepts below before Monday.'}
                     </p>
                   </div>
 
-                  {missedQuestions.length > 0 && (
-                    <div className="text-left space-y-2.5 pt-2 border-t border-zinc-800">
-                      <div className="text-xs font-bold uppercase tracking-wider text-amber-400">
-                        Review Missed Questions ({missedQuestions.length})
+                  {missed.length > 0 && (
+                    <div className="text-left space-y-2.5 pt-4 border-t border-[#d7dde7]">
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-[#7a869a]">
+                        Missed Questions ({missed.length})
                       </div>
-                      {missedQuestions.map((mq) => (
-                        <div
-                          key={mq.id}
-                          className="p-3.5 rounded-xl bg-zinc-950/80 border border-zinc-800 space-y-1"
-                        >
-                          <div className="text-xs font-bold text-white">{mq.q}</div>
-                          <div className="text-xs text-emerald-300">
-                            Correct: {mq.options[mq.answer]}
+                      {missed.map((mq) => (
+                        <div key={mq.id} className="neu-inset rounded-xl p-4 space-y-1">
+                          <div className="text-xs font-semibold text-[#161922]">{mq.q}</div>
+                          <div className="text-xs font-medium text-[#15803d]">
+                            Answer: {mq.options[mq.answer]}
                           </div>
-                          <div className="text-xs text-zinc-400">{mq.explain}</div>
+                          <div className="text-xs text-[#526075]">{mq.explain}</div>
                         </div>
                       ))}
                     </div>
                   )}
 
-                  <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                  <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
                     <button
                       onClick={retakeQuiz}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer transition"
+                      className="neu-btn-dark inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-medium cursor-pointer"
                     >
-                      <RotateCcw className="w-4 h-4" /> Retake Quiz
+                      <RotateCcw className="w-3.5 h-3.5" /> Retake quiz
                     </button>
                     <button
                       onClick={() => setViewMode('all')}
-                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-zinc-900 border border-zinc-700 hover:bg-zinc-800 text-zinc-200 cursor-pointer transition"
+                      className="neu-btn px-4 py-2.5 rounded-xl text-xs font-medium text-[#161922] cursor-pointer"
                     >
-                      <LayoutGrid className="w-4 h-4" /> View All {total} Questions
+                      View all {total} questions
                     </button>
                   </div>
                 </motion.div>
@@ -426,7 +330,7 @@ export default function QuizAndPresentation({ onAskTutor }) {
             </AnimatePresence>
           </div>
         ) : (
-          /* ================= VIEW 2: ALL 12 STUDY BANK ================= */
+          /* View All 12 */
           <div className="space-y-5">
             <div className="flex flex-wrap gap-2">
               {CATEGORIES.map((cat) => {
@@ -439,133 +343,115 @@ export default function QuizAndPresentation({ onAskTutor }) {
                   <button
                     key={cat}
                     onClick={() => setCategory(cat)}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
-                      active
-                        ? 'bg-emerald-500/15 border-emerald-500/45 text-emerald-200'
-                        : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-medium cursor-pointer transition ${
+                      active ? 'neu-inset text-[#161922] font-semibold' : 'neu-btn text-[#647084]'
                     }`}
                   >
-                    {cat} <span className="opacity-60 font-mono ml-1">({count})</span>
+                    {cat} ({count})
                   </button>
                 )
               })}
             </div>
 
-            <motion.div layout className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <AnimatePresence mode="popLayout">
-                {filteredAll.map((item) => {
-                  const pick = answers[item.id]
-                  const isAnswered = pick !== undefined
-                  const isCorrect = pick === item.answer
-                  const showHint = !!openHints[item.id]
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {filteredAll.map((item) => {
+                const pick = answers[item.id]
+                const isAnswered = pick !== undefined
+                const isCorrect = pick === item.answer
+                const showHint = !!openHints[item.id]
 
-                  return (
-                    <motion.div
-                      key={item.id}
-                      layout
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.96 }}
-                      transition={{ duration: 0.2 }}
-                      className="rounded-2xl border border-zinc-800 studio-card p-5 flex flex-col justify-between gap-4"
-                    >
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-zinc-800 text-zinc-300">
-                            {item.category}
-                          </span>
-                          <button
-                            onClick={() =>
-                              setOpenHints((prev) => ({ ...prev, [item.id]: !prev[item.id] }))
-                            }
-                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-zinc-400 hover:text-sky-300 cursor-pointer transition"
-                          >
-                            <HelpCircle className="w-3.5 h-3.5" /> {showHint ? 'Hide Hint' : 'Hint'}
-                          </button>
-                        </div>
-
-                        <div className="text-sm font-bold text-white leading-snug">{item.q}</div>
-
-                        {item.code && (
-                          <div className="rounded-xl bg-[#0a0b0e] border border-zinc-800/90 px-3 py-2.5 font-mono text-[11.5px] leading-relaxed overflow-x-auto">
-                            {item.code.split('\n').map((ln, idx) => (
-                              <div key={idx} className="whitespace-pre">
-                                <PythonLine line={ln} />
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {showHint && (
-                          <div className="p-2.5 rounded-lg bg-sky-500/10 border border-sky-500/25 text-xs text-sky-200">
-                            <strong>Hint:</strong> {item.hint}
-                          </div>
-                        )}
-
-                        <div className="space-y-2">
-                          {item.options.map((opt, oIdx) => {
-                            const chosen = pick === oIdx
-                            const revealRight = isAnswered && oIdx === item.answer
-                            const revealWrong = chosen && oIdx !== item.answer
-                            return (
-                              <button
-                                key={oIdx}
-                                onClick={() => handleQuizAnswer(item, oIdx)}
-                                className={`w-full text-left px-3.5 py-2.5 rounded-xl border text-xs font-medium transition cursor-pointer flex items-center justify-between gap-2 ${
-                                  revealRight
-                                    ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-200 font-semibold'
-                                    : revealWrong
-                                    ? 'bg-rose-500/15 border-rose-500/50 text-rose-200'
-                                    : 'bg-zinc-950/60 border-zinc-800 text-zinc-300 hover:border-zinc-600 hover:bg-zinc-800/60'
-                                }`}
-                              >
-                                <span>{opt}</span>
-                                {revealRight && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
-                                {revealWrong && <XCircle className="w-4 h-4 text-rose-400 shrink-0" />}
-                              </button>
-                            )
-                          })}
-                        </div>
+                return (
+                  <div
+                    key={item.id}
+                    className="neu-card rounded-2xl p-5 flex flex-col justify-between gap-4"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="neu-inset px-2.5 py-0.5 rounded-md text-[10.5px] font-medium text-[#475569]">
+                          {item.category}
+                        </span>
+                        <button
+                          onClick={() =>
+                            setOpenHints((prev) => ({ ...prev, [item.id]: !prev[item.id] }))
+                          }
+                          className="text-[11px] font-medium text-[#647084] hover:text-[#161922] cursor-pointer"
+                        >
+                          {showHint ? 'Hide hint' : 'Hint'}
+                        </button>
                       </div>
 
-                      {isAnswered && (
-                        <div
-                          className={`p-3 rounded-xl text-xs leading-relaxed border space-y-1.5 ${
-                            isCorrect
-                              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
-                              : 'bg-rose-500/10 border-rose-500/30 text-rose-200'
-                          }`}
-                        >
-                          {!isCorrect && (
-                            <div className="font-bold text-emerald-300">
-                              Correct answer: {item.options[item.answer]}
+                      <div className="text-sm font-semibold text-[#161922] leading-snug">{item.q}</div>
+
+                      {item.code && (
+                        <div className="code-well rounded-xl px-3.5 py-2.5 font-mono text-[11.5px] leading-relaxed overflow-x-auto">
+                          {item.code.split('\n').map((ln, idx) => (
+                            <div key={idx} className="whitespace-pre">
+                              <PythonLine line={ln} />
                             </div>
-                          )}
-                          <div>
-                            <strong>Why:</strong> {item.explain}
-                          </div>
+                          ))}
                         </div>
                       )}
-                    </motion.div>
-                  )
-                })}
-              </AnimatePresence>
-            </motion.div>
+
+                      {showHint && (
+                        <div className="neu-inset rounded-xl p-2.5 text-xs text-[#475569]">
+                          <strong>Hint:</strong> {item.hint}
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        {item.options.map((opt, oIdx) => {
+                          const chosen = pick === oIdx
+                          const revealRight = isAnswered && oIdx === item.answer
+                          const revealWrong = chosen && oIdx !== item.answer
+                          return (
+                            <button
+                              key={oIdx}
+                              onClick={() => handleAnswer(item, oIdx)}
+                              className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs font-medium transition cursor-pointer flex items-center justify-between gap-2 ${
+                                revealRight
+                                  ? 'bg-[#e3f3e8] border border-[#a7d7b8] text-[#14532d] font-semibold'
+                                  : revealWrong
+                                  ? 'bg-[#fbe9ec] border border-[#f2c6ce] text-[#881337]'
+                                  : 'neu-btn text-[#161922]'
+                              }`}
+                            >
+                              <span>{opt}</span>
+                              {revealRight && <Check className="w-3.5 h-3.5 text-[#15803d] shrink-0" />}
+                              {revealWrong && <X className="w-3.5 h-3.5 text-[#be123c] shrink-0" />}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {isAnswered && (
+                      <div className="neu-inset rounded-xl p-3 text-xs space-y-1 text-[#2c3340]">
+                        {!isCorrect && (
+                          <div className="font-semibold text-[#15803d]">
+                            Correct: {item.options[item.answer]}
+                          </div>
+                        )}
+                        <div>
+                          <strong>Why:</strong> {item.explain}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )}
       </div>
 
-      {/* Presentation Split */}
-      <div className="space-y-5 pt-6 border-t border-zinc-800/80">
+      {/* Speaking Split */}
+      <div className="space-y-5 pt-8 border-t border-[#d7dde7]">
         <div>
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-sky-400 mb-1.5">
-            <Users className="w-3.5 h-3.5" /> Monday Presentation Plan
-          </span>
-          <h2 className="text-2xl font-bold tracking-tight text-white">
-            Suggested 3-Person Speaking Split
+          <h2 className="text-xl font-semibold tracking-tight text-[#161922]">
+            Presentation Split
           </h2>
-          <p className="text-zinc-400 text-sm mt-1">
-            Each teammate covers one clear section (~90 seconds) with a ready-to-speak script in natural English.
+          <p className="text-sm text-[#647084] mt-1">
+            Suggested three-part breakdown (~90 seconds each) in plain English.
           </p>
         </div>
 
@@ -573,43 +459,22 @@ export default function QuizAndPresentation({ onAskTutor }) {
           {SPEAKER_SPLIT.map((sp) => (
             <div
               key={sp.name}
-              className="rounded-2xl border border-zinc-800 studio-card p-5 flex flex-col justify-between gap-4"
+              className="neu-card rounded-2xl p-5 flex flex-col justify-between gap-4"
             >
               <div className="space-y-3">
-                <span
-                  className={`inline-block px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
-                    SPEAKER_BADGE[sp.tone]
-                  }`}
-                >
+                <span className="inline-block neu-inset px-2.5 py-1 rounded-lg text-[11px] font-medium text-[#475569]">
                   {sp.part}
                 </span>
-                <h3 className="text-lg font-bold text-white">{sp.name}</h3>
-                <ul className="space-y-1.5 text-xs text-zinc-300 list-disc pl-4 leading-relaxed">
+                <h3 className="text-base font-semibold text-[#161922]">{sp.name}</h3>
+                <ul className="space-y-1.5 text-xs text-[#4a5568] list-disc pl-4 leading-relaxed">
                   {sp.bullets.map((b, i) => (
                     <li key={i}>{b}</li>
                   ))}
                 </ul>
               </div>
 
-              <div className="rounded-xl bg-[#0a0b0e] border border-zinc-800 p-3.5 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-400">
-                    <Mic className="w-3 h-3" /> Spoken Script
-                  </div>
-                  {onAskTutor && (
-                    <button
-                      onClick={() =>
-                        onAskTutor(
-                          `Help ${sp.name} rehearse ${sp.part}. Ask one realistic professor question about their section.`
-                        )
-                      }
-                      className="text-[10.5px] font-semibold text-emerald-400 hover:text-emerald-300 cursor-pointer transition"
-                    >
-                      Rehearse with Tutor →
-                    </button>
-                  )}
-                </div>
-                <p className="text-xs text-zinc-200 italic leading-relaxed">{sp.script}</p>
+              <div className="neu-inset rounded-xl p-3.5 text-xs text-[#1e2430] leading-relaxed">
+                {sp.script}
               </div>
             </div>
           ))}

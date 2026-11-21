@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Code2, FileSearch, Terminal, Crosshair, Trophy, Mic } from 'lucide-react'
+import { Mic } from 'lucide-react'
 import CodeMapModule from './components/CodeMapModule'
 import FileParserLab from './components/FileParserLab'
 import LiveSimulator from './components/LiveSimulator'
@@ -9,11 +9,11 @@ import QuizAndPresentation from './components/QuizAndPresentation'
 import VoiceTutorDrawer from './components/VoiceTutorDrawer'
 
 const TABS = [
-  { id: 'code', label: 'Code Map', icon: Code2 },
-  { id: 'parser', label: 'File Parser', icon: FileSearch },
-  { id: 'sim', label: 'Live Simulator', icon: Terminal },
-  { id: 'choose', label: 'choose_member', icon: Crosshair },
-  { id: 'quiz', label: 'Challenges & Script', icon: Trophy },
+  { id: 'code', label: 'Code' },
+  { id: 'parser', label: 'File Parser' },
+  { id: 'sim', label: 'Simulator' },
+  { id: 'choose', label: 'choose_member' },
+  { id: 'quiz', label: 'Quiz & Script' },
 ]
 
 export default function App() {
@@ -45,57 +45,34 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Compact Glass Studio Header */}
-      <header className="sticky top-0 z-40 border-b border-zinc-800/80 bg-[#0b0c0f]/90 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-3.5 pb-2.5 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-9 h-9 rounded-xl bg-zinc-900 border border-zinc-700/80 flex items-center justify-center font-mono font-bold text-sm text-emerald-400 shadow-inner shrink-0">
-                &gt;_
-              </div>
-              <div className="min-w-0">
-                <h1 className="text-base sm:text-lg font-bold tracking-tight text-white leading-tight truncate">
-                  Student Club Member Directory
-                </h1>
-                <p className="text-[11.5px] text-zinc-400 truncate">
-                  CSCI 1380 · Prompt #8 · Jeremy, Sara &amp; Felix
-                </p>
-              </div>
+      {/* Minimalist Soft-Neumorphic Header */}
+      <header className="sticky top-0 z-40 bg-[#e8ecf2]/90 backdrop-blur-md border-b border-white/60">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex flex-col gap-3.5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-lg font-semibold tracking-tight text-[#161922] truncate">
+                Student Club Member Directory
+              </h1>
+              <p className="text-xs text-[#647084] truncate">
+                CSCI 1380 · Prompt 8 · Jeremy Hernández, Sara Astorga &amp; Felix Martinez
+              </p>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-              <div className="hidden xl:flex items-center gap-1.5 mr-1">
-                <span className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-zinc-900/90 border border-zinc-800 text-zinc-300">
-                  Jeremy Hernández
-                </span>
-                <span className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-zinc-900/90 border border-zinc-800 text-zinc-300">
-                  Sara Astorga
-                </span>
-                <span className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-zinc-900/90 border border-zinc-800 text-zinc-300">
-                  Felix Martinez
-                </span>
-              </div>
-
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => setTutorOpen(true)}
-                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 cursor-pointer transition"
-              >
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-200 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
-                </span>
-                <Mic className="w-3.5 h-3.5" />
-                <span>Voice Tutor</span>
-              </motion.button>
-            </div>
+            <button
+              onClick={() => setTutorOpen(true)}
+              className="neu-btn-dark inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium cursor-pointer shrink-0"
+            >
+              <Mic className="w-3.5 h-3.5" strokeWidth={1.8} />
+              <span>Voice Tutor</span>
+            </button>
           </div>
 
-          {/* Clean Single-Row Tab Bar (no ugly scrollbar) */}
-          <nav className="flex items-center gap-1 overflow-x-auto no-scrollbar" role="tablist">
+          {/* Recessed Neumorphic Tab Track */}
+          <nav
+            className="neu-inset p-1.5 rounded-2xl flex items-center gap-1 overflow-x-auto no-scrollbar w-full sm:w-fit"
+            role="tablist"
+          >
             {TABS.map((tab, idx) => {
-              const Icon = tab.icon
               const isActive = activeTab === tab.id
               return (
                 <button
@@ -103,29 +80,20 @@ export default function App() {
                   onClick={() => setActiveTab(tab.id)}
                   role="tab"
                   aria-selected={isActive}
-                  className={`relative px-3 py-1.5 rounded-xl text-xs sm:text-[13px] font-semibold whitespace-nowrap inline-flex items-center gap-1.5 transition cursor-pointer ${
-                    isActive ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
+                  className={`relative px-4 py-2 rounded-xl text-xs sm:text-[13px] font-medium whitespace-nowrap transition-colors cursor-pointer ${
+                    isActive ? 'text-[#161922]' : 'text-[#647084] hover:text-[#161922]'
                   }`}
                 >
                   {isActive && (
                     <motion.div
-                      layoutId="activeNavPill"
-                      className="absolute inset-0 rounded-xl bg-zinc-800/90 border border-zinc-700/80 shadow-sm"
-                      transition={{ type: 'spring', stiffness: 450, damping: 34 }}
+                      layoutId="neuActiveTab"
+                      className="absolute inset-0 rounded-xl neu-card-sm"
+                      transition={{ type: 'spring', stiffness: 420, damping: 34 }}
                     />
                   )}
-                  <span className="relative z-10 inline-flex items-center gap-1.5">
-                    <span
-                      className={`w-4.5 h-4.5 rounded-md font-mono text-[10px] font-bold inline-flex items-center justify-center ${
-                        isActive
-                          ? 'bg-emerald-500 text-zinc-950'
-                          : 'bg-zinc-900 border border-zinc-800 text-zinc-400'
-                      }`}
-                    >
-                      {idx + 1}
-                    </span>
-                    <Icon className="w-3.5 h-3.5 hidden sm:inline" />
-                    {tab.label}
+                  <span className="relative z-10 inline-flex items-center gap-2">
+                    <span className="font-mono text-[11px] opacity-55">{idx + 1}</span>
+                    <span>{tab.label}</span>
                   </span>
                 </button>
               )
@@ -134,15 +102,15 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-7">
+      {/* Main Workspace */}
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
           >
             {activeTab === 'code' && <CodeMapModule onAskTutor={handleAskTutor} />}
             {activeTab === 'parser' && <FileParserLab />}
@@ -153,10 +121,8 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      <footer className="border-t border-zinc-900 py-5 px-4 text-center text-xs text-zinc-500 flex flex-col sm:flex-row items-center justify-center gap-2">
-        <span>CSCI 1380 · Student Club Member Directory · Jeremy Hernández · Sara Astorga · Felix Martinez</span>
-        <span className="hidden sm:inline text-zinc-700">·</span>
-        <span className="font-mono text-[11px] text-zinc-600">Tip: Press keys 1–5 to switch modules</span>
+      <footer className="py-6 px-4 text-center text-xs text-[#7a869a]">
+        CSCI 1380 · Prompt 8 · Press 1–5 to switch views
       </footer>
 
       <VoiceTutorDrawer

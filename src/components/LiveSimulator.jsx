@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Terminal, RotateCcw, HardDrive, Cpu, Star, Send } from 'lucide-react'
+import { RotateCcw, Send } from 'lucide-react'
 import { INITIAL_MEMBERS, OFFICER_ROLES } from '../data/projectData'
 
 const ROLE_MAP = {
@@ -37,14 +37,14 @@ export default function LiveSimulator() {
   const [fileText, setFileText] = useState(
     () => INITIAL_MEMBERS.map((m) => formatLine(m.name, m.role)).join('\n') + '\n'
   )
-  const [mode, setMode] = useState('menu') // menu | add_name | add_role | delete_choose | update_choose | update_role | exited
+  const [mode, setMode] = useState('menu')
   const [tempName, setTempName] = useState('')
   const [tempPos, setTempPos] = useState(-1)
   const [highlightIdx, setHighlightIdx] = useState(-1)
-  const [fileFlashing, setFileFlashing] = useState(false)
+  const [fileSavedNotice, setFileSavedNotice] = useState(false)
   const [vars, setVars] = useState({ choice: '""', position: '—', officer_count: '—' })
   const [explain, setExplain] = useState(
-    'Startup loaded 5 records from directory.txt into member_list and member_roles. Pick an option below or type directly into the terminal.'
+    'Startup loaded 5 records from directory.txt into member_list and member_roles. Select an option below or type directly into the console.'
   )
   const [inputVal, setInputVal] = useState('')
   const [logs, setLogs] = useState([
@@ -69,8 +69,8 @@ export default function LiveSimulator() {
       updatedList.map((m) => formatLine(m.name, m.role)).join('\n') +
       (updatedList.length ? '\n' : '')
     setFileText(nextFile)
-    setFileFlashing(true)
-    setTimeout(() => setFileFlashing(false), 1100)
+    setFileSavedNotice(true)
+    setTimeout(() => setFileSavedNotice(false), 1200)
   }
 
   const resetAll = () => {
@@ -82,7 +82,7 @@ export default function LiveSimulator() {
     setTempPos(-1)
     setHighlightIdx(-1)
     setVars({ choice: '""', position: '—', officer_count: '—' })
-    setExplain('Reset to the original 5 members from directory.txt.')
+    setExplain('Reset to the original 5 records from directory.txt.')
     setLogs([
       { id: nextUid++, text: '[Reset] Reloaded original 5 records from directory.txt', tone: 'sys' },
       { id: nextUid++, text: MENU_TEXT, tone: 'normal' },
@@ -102,9 +102,7 @@ export default function LiveSimulator() {
     setMode('menu')
     setHighlightIdx(-1)
     setVars({ choice: '""', position: '—', officer_count: '—' })
-    setExplain(
-      'Program restarted! The startup loop read directory.txt and restored your saved changes back into both lists.'
-    )
+    setExplain('Program restarted and reloaded your saved changes from directory.txt.')
     addLog('\n[Restart] Reading directory.txt at startup...', 'sys')
     addLog(MENU_TEXT, 'normal')
   }
@@ -140,10 +138,10 @@ export default function LiveSimulator() {
 
       if (raw === '1') {
         setMode('add_name')
-        setExplain('Matched if choice == "1": now prompting for new_member_name with input().')
+        setExplain('Entered choice == "1": prompting for new_member_name.')
       } else if (raw === '2') {
         printDirectory(members)
-        setExplain('Called show_directory(member_list, member_roles). The for loop printed each pair numbered from 1.')
+        setExplain('Called show_directory(member_list, member_roles).')
         addLog(MENU_TEXT)
       } else if (raw === '3') {
         addLog('\n============= OFFICERS ==============')
@@ -157,43 +155,43 @@ export default function LiveSimulator() {
         if (count === 0) addLog('No officers found.')
         else addLog(`Total officers: ${count}`)
         setVars((v) => ({ ...v, choice: '"3"', officer_count: String(count) }))
-        setExplain(`The for loop checked every role using if ... or ... and found ${count} officer(s).`)
+        setExplain(`Filtered the lists with if/or and counted ${count} officer(s).`)
         addLog(MENU_TEXT)
       } else if (raw === '4') {
         addLog('\n=========== SAVED RECORDS ===========')
         if (!fileText) addLog('The saved directory is empty.')
         else addLog(fileText.trimEnd(), 'sys')
-        setExplain('Opened directory.txt in read mode ("r") and printed the entire file using read().')
+        setExplain('Opened directory.txt in read mode ("r") and printed the full text with read().')
         addLog(MENU_TEXT)
       } else if (raw === '5') {
         if (members.length === 0) {
           addLog('There are no members to delete.', 'err')
-          setExplain('len(member_list) == 0 was True, so there is nobody to delete.')
+          setExplain('len(member_list) == 0 was True.')
           addLog(MENU_TEXT)
         } else {
           printDirectory(members)
           setMode('delete_choose')
           setVars((v) => ({ ...v, choice: '"5"', position: '-1' }))
-          setExplain('Called choose_member(). Displayed the directory and initialized position = -1.')
+          setExplain('Called choose_member(). Initialized position = -1.')
         }
       } else if (raw === '6') {
         if (members.length === 0) {
           addLog('There are no members to update.', 'err')
-          setExplain('len(member_list) == 0 was True, so there is nobody to update.')
+          setExplain('len(member_list) == 0 was True.')
           addLog(MENU_TEXT)
         } else {
           printDirectory(members)
           setMode('update_choose')
           setVars((v) => ({ ...v, choice: '"6"', position: '-1' }))
-          setExplain('Called choose_member() to pick who gets a new role. position starts at -1.')
+          setExplain('Called choose_member() to pick a member to update.')
         }
       } else if (raw === '7') {
         addLog('Goodbye! Your records are saved in directory.txt.', 'ok')
         setMode('exited')
-        setExplain('choice == "7" made while choice != "7" False, ending the program. Click "Re-run Program" to verify persistence!')
+        setExplain('choice == "7" ended the while loop. Click Re-run to verify persistence.')
       } else {
         addLog('Invalid option. Please select a number from 1 to 7.', 'err')
-        setExplain('Entered the else branch. Because we compare text instead of int(), invalid input never crashes Python.')
+        setExplain('Entered else branch—comparing strings prevents crashes on invalid text.')
         addLog(MENU_TEXT)
       }
       return
@@ -203,7 +201,7 @@ export default function LiveSimulator() {
       setTempName(raw)
       setMode('add_role')
       addLog(ROLE_MENU_TEXT)
-      setExplain(`Stored new_member_name = "${raw}" and called choose_role() to pick a role by number.`)
+      setExplain(`Stored new_member_name = "${raw}" and called choose_role().`)
       return
     }
 
@@ -212,7 +210,7 @@ export default function LiveSimulator() {
       if (!role) {
         addLog('Invalid role. Please choose a number from 1 to 5.', 'err')
         addLog(ROLE_MENU_TEXT)
-        setExplain('Invalid input inside choose_role(). role is still "", so the while loop asks again.')
+        setExplain('Invalid choice inside choose_role(); role stays "" so the loop repeats.')
       } else {
         const next = [...members, { id: `m${nextUid++}`, name: tempName, role }]
         setMembers(next)
@@ -220,7 +218,7 @@ export default function LiveSimulator() {
         syncFile(next)
         addLog('Member added and saved!', 'ok')
         setMode('menu')
-        setExplain(`Appended "${tempName}" and "${role}" at index [${next.length - 1}] in both lists and called save_directory().`)
+        setExplain(`Appended "${tempName}" and "${role}" at index [${next.length - 1}] and called save_directory().`)
         addLog(MENU_TEXT)
       }
       return
@@ -231,7 +229,7 @@ export default function LiveSimulator() {
         setVars((v) => ({ ...v, position: '-1' }))
         addLog(mode === 'delete_choose' ? 'Delete canceled.' : 'Update canceled.', 'sys')
         setMode('menu')
-        setExplain('User entered "0". choose_member() returned -1, so if position != -1 was False and nothing changed.')
+        setExplain('Entered "0" → choose_member() returned -1, canceling safely.')
         addLog(MENU_TEXT)
         return
       }
@@ -241,7 +239,7 @@ export default function LiveSimulator() {
       })
       if (found === -1) {
         addLog('Invalid member number. Please try again.', 'err')
-        setExplain(`No str(i + 1) matched "${raw}". position stays -1 so the while loop asks again.`)
+        setExplain(`No str(i + 1) matched "${raw}". Asking again.`)
       } else if (mode === 'delete_choose') {
         const target = members[found]
         const next = members.filter((_, i) => i !== found)
@@ -251,9 +249,7 @@ export default function LiveSimulator() {
         syncFile(next)
         addLog('Member deleted and file updated!', 'ok')
         setMode('menu')
-        setExplain(
-          `choose_member() returned index ${found} (${target.name}). Deleted index ${found} from both lists—watch how every item below shifted left—and rewrote directory.txt.`
-        )
+        setExplain(`Deleted index ${found} (${target.name}) from both lists, shifted remaining items left, and saved.`)
         addLog(MENU_TEXT)
       } else {
         setTempPos(found)
@@ -261,7 +257,7 @@ export default function LiveSimulator() {
         setHighlightIdx(found)
         setMode('update_role')
         addLog(ROLE_MENU_TEXT)
-        setExplain(`choose_member() returned index ${found} (${members[found].name}). Now calling choose_role().`)
+        setExplain(`Selected index ${found} (${members[found].name}). Calling choose_role().`)
       }
       return
     }
@@ -271,7 +267,6 @@ export default function LiveSimulator() {
       if (!role) {
         addLog('Invalid role. Please choose a number from 1 to 5.', 'err')
         addLog(ROLE_MENU_TEXT)
-        setExplain('Invalid input inside choose_role(). Asking again.')
       } else {
         const next = members.map((m, i) => (i === tempPos ? { ...m, role } : m))
         setMembers(next)
@@ -279,7 +274,7 @@ export default function LiveSimulator() {
         syncFile(next)
         addLog('Role updated and saved!', 'ok')
         setMode('menu')
-        setExplain(`Replaced only member_roles[${tempPos}] with "${role}" while keeping "${members[tempPos].name}", then called save_directory().`)
+        setExplain(`Updated member_roles[${tempPos}] to "${role}" and rewrote directory.txt.`)
         addLog(MENU_TEXT)
       }
     }
@@ -289,17 +284,17 @@ export default function LiveSimulator() {
     mode === 'menu'
       ? [
           { label: '1. Add', val: '1' },
-          { label: '2. View Directory', val: '2' },
+          { label: '2. Directory', val: '2' },
           { label: '3. Officers', val: '3' },
-          { label: '4. Saved File', val: '4' },
+          { label: '4. Saved file', val: '4' },
           { label: '5. Delete', val: '5' },
-          { label: '6. Update Role', val: '6' },
+          { label: '6. Update role', val: '6' },
           { label: '7. Exit', val: '7' },
         ]
       : mode === 'add_name'
       ? [
-          { label: '"Sofia Rios"', val: 'Sofia Rios' },
-          { label: '"Diego Vega"', val: 'Diego Vega' },
+          { label: 'Sofia Rios', val: 'Sofia Rios' },
+          { label: 'Diego Vega', val: 'Diego Vega' },
         ]
       : mode === 'add_role' || mode === 'update_role'
       ? [
@@ -312,40 +307,33 @@ export default function LiveSimulator() {
         ]
       : mode === 'delete_choose' || mode === 'update_choose'
       ? [
-          ...members.map((m, i) => ({ label: `#${i + 1} ${m.name.split(' ')[0]}`, val: String(i + 1) })),
-          { label: '0 (Cancel)', val: '0' },
+          ...members.map((m, i) => ({ label: `${i + 1}. ${m.name.split(' ')[0]}`, val: String(i + 1) })),
+          { label: '0. Cancel', val: '0' },
         ]
       : []
 
   return (
     <div className="space-y-6">
       <div>
-        <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-400 mb-1.5">
-          <Terminal className="w-3.5 h-3.5" /> Module 03 · Live Execution Studio
-        </span>
-        <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-          Live Python Simulator
+        <h2 className="text-2xl font-semibold tracking-tight text-[#161922]">
+          Live Simulator
         </h2>
-        <p className="text-zinc-400 text-sm md:text-base mt-1 max-w-3xl">
-          Run the actual program logic interactively. Watch <code className="text-emerald-300">member_list</code>,{' '}
-          <code className="text-amber-300">member_roles</code>, and <code className="text-sky-300">directory.txt</code> animate in real time as you add, filter, update, or delete members.
+        <p className="text-sm text-[#647084] mt-1 max-w-2xl">
+          Run the program interactively and watch <span className="font-mono text-[#161922]">member_list</span>,{' '}
+          <span className="font-mono text-[#161922]">member_roles</span>, and{' '}
+          <span className="font-mono text-[#161922]">directory.txt</span> update in real time.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left: Terminal */}
-        <div className="lg:col-span-6 space-y-3">
-          <div className="rounded-2xl border border-zinc-800 bg-[#0a0a0f] overflow-hidden shadow-2xl flex flex-col h-[520px]">
-            <div className="flex items-center justify-between px-4 py-2.5 bg-zinc-900/90 border-b border-zinc-800">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-500/80" />
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-400/80" />
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400/80" />
-              </div>
-              <span className="font-mono text-xs text-zinc-400">python student_club_directory.py</span>
+        {/* Console */}
+        <div className="lg:col-span-6 space-y-3.5">
+          <div className="code-well rounded-2xl overflow-hidden flex flex-col h-[500px]">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+              <span className="font-mono text-xs text-zinc-300">python student_club_directory.py</span>
               <button
                 onClick={resetAll}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 cursor-pointer transition"
+                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-zinc-400 hover:text-white cursor-pointer transition"
               >
                 <RotateCcw className="w-3 h-3" /> Reset
               </button>
@@ -360,11 +348,11 @@ export default function LiveSimulator() {
                   key={entry.id}
                   className={
                     entry.tone === 'sys'
-                      ? 'text-sky-400'
+                      ? 'text-sky-300'
                       : entry.tone === 'ok'
-                      ? 'text-emerald-400'
+                      ? 'text-emerald-300'
                       : entry.tone === 'err'
-                      ? 'text-rose-400'
+                      ? 'text-rose-300'
                       : entry.tone === 'input'
                       ? 'text-amber-300 font-semibold'
                       : 'text-zinc-300'
@@ -383,9 +371,9 @@ export default function LiveSimulator() {
                 setInputVal('')
                 handleCommand(v)
               }}
-              className="flex items-center gap-2 p-2.5 bg-zinc-900/90 border-t border-zinc-800"
+              className="flex items-center gap-2 p-3 border-t border-white/[0.06] bg-black/25"
             >
-              <span className="font-mono text-xs text-sky-400 shrink-0 hidden sm:inline">
+              <span className="font-mono text-xs text-zinc-400 shrink-0 hidden sm:inline">
                 {promptLabel}
               </span>
               <input
@@ -393,34 +381,33 @@ export default function LiveSimulator() {
                 value={inputVal}
                 onChange={(e) => setInputVal(e.target.value)}
                 disabled={mode === 'exited'}
-                placeholder={mode === 'exited' ? 'Program ended' : 'Type input & press Enter...'}
-                className="flex-1 bg-zinc-950 border border-zinc-800 focus:border-indigo-500 focus:outline-none rounded-lg px-3 py-1.5 font-mono text-xs text-white disabled:opacity-40"
+                placeholder={mode === 'exited' ? 'Program ended' : 'Type input...'}
+                className="flex-1 bg-white/[0.06] rounded-lg px-3 py-1.5 font-mono text-xs text-white focus:outline-none disabled:opacity-40"
               />
               <button
                 type="submit"
                 disabled={mode === 'exited'}
-                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 cursor-pointer transition"
+                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white disabled:opacity-40 cursor-pointer transition"
               >
                 <Send className="w-3.5 h-3.5" />
               </button>
             </form>
           </div>
 
-          {/* Quick Click Actions */}
           <div className="flex flex-wrap gap-2">
             {mode === 'exited' ? (
               <button
                 onClick={restartFromDisk}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 cursor-pointer transition"
+                className="neu-btn-dark inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium cursor-pointer"
               >
-                <RotateCcw className="w-3.5 h-3.5" /> Re-run Program (Loads Saved directory.txt)
+                <RotateCcw className="w-3.5 h-3.5" /> Re-run Program (Loads directory.txt)
               </button>
             ) : (
               quickButtons.map((b) => (
                 <button
                   key={b.label}
                   onClick={() => handleCommand(b.val)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-zinc-900 border border-zinc-800 hover:border-indigo-500/50 hover:bg-indigo-500/15 text-zinc-200 cursor-pointer transition"
+                  className="neu-btn px-3 py-1.5 rounded-xl text-xs font-medium text-[#161922] cursor-pointer"
                 >
                   {b.label}
                 </button>
@@ -429,33 +416,25 @@ export default function LiveSimulator() {
           </div>
         </div>
 
-        {/* Right: Animated Memory & File Inspector */}
-        <div className="lg:col-span-6 space-y-4">
-          {/* Parallel Lists Card */}
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 space-y-4">
+        {/* Memory & File Inspector */}
+        <div className="lg:col-span-6 space-y-5">
+          <div className="neu-card rounded-2xl p-5 space-y-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm font-bold text-white">
-                <Cpu className="w-4 h-4 text-indigo-400" /> Live Memory · Parallel Lists
-              </div>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-indigo-500/15 border border-indigo-500/30 text-indigo-300">
-                len = {members.length}
-              </span>
+              <h3 className="text-sm font-semibold text-[#161922]">Parallel Lists in Memory</h3>
+              <span className="font-mono text-xs text-[#647084]">len = {members.length}</span>
             </div>
 
             <div className="flex flex-wrap gap-2">
               {Object.entries(vars).map(([k, v]) => (
-                <div
-                  key={k}
-                  className="px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 font-mono text-xs text-zinc-400"
-                >
-                  {k} = <span className="text-indigo-300 font-bold">{v}</span>
+                <div key={k} className="neu-inset px-2.5 py-1 rounded-lg font-mono text-xs text-[#475569]">
+                  {k} = <span className="text-[#161922] font-semibold">{v}</span>
                 </div>
               ))}
             </div>
 
             <div className="space-y-2">
-              <div className="grid grid-cols-12 gap-2 px-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                <div className="col-span-2">Index i</div>
+              <div className="grid grid-cols-12 gap-2 px-2 text-[11px] font-mono text-[#7a869a]">
+                <div className="col-span-2">i</div>
                 <div className="col-span-5">member_list[i]</div>
                 <div className="col-span-5">member_roles[i]</div>
               </div>
@@ -467,9 +446,9 @@ export default function LiveSimulator() {
                       key="empty"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
-                      className="text-center py-8 rounded-xl border border-dashed border-zinc-800 text-zinc-500 font-mono text-xs"
+                      className="neu-inset text-center py-8 rounded-xl text-[#7a869a] font-mono text-xs"
                     >
-                      member_list = [] &nbsp;·&nbsp; member_roles = []
+                      member_list = [] · member_roles = []
                     </motion.div>
                   ) : (
                     members.map((m, idx) => {
@@ -479,25 +458,25 @@ export default function LiveSimulator() {
                         <motion.div
                           key={m.id}
                           layout
-                          initial={{ opacity: 0, x: -24, scale: 0.95 }}
-                          animate={{ opacity: 1, x: 0, scale: 1 }}
-                          exit={{ opacity: 0, x: 30, scale: 0.92 }}
-                          transition={{ type: 'spring', stiffness: 380, damping: 28 }}
-                          className={`grid grid-cols-12 gap-2 items-center p-2 rounded-xl border transition ${
-                            active
-                              ? 'bg-indigo-500/15 border-indigo-400/70 shadow-md shadow-indigo-500/10'
-                              : 'bg-zinc-950/70 border-zinc-800/80'
+                          initial={{ opacity: 0, y: -6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, x: 18 }}
+                          transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                          className={`grid grid-cols-12 gap-2 items-center px-3 py-2 rounded-xl text-xs transition ${
+                            active ? 'neu-btn-dark' : 'neu-inset text-[#161922]'
                           }`}
                         >
-                          <div className="col-span-2 font-mono text-xs font-bold text-indigo-400 pl-1">
+                          <div className={`col-span-2 font-mono font-semibold ${active ? 'text-zinc-300' : 'text-[#647084]'}`}>
                             [{idx}]
                           </div>
-                          <div className="col-span-5 text-xs font-semibold text-emerald-300 truncate">
-                            {m.name}
-                          </div>
-                          <div className="col-span-5 flex items-center justify-between gap-1 text-xs font-semibold text-amber-300 truncate">
+                          <div className="col-span-5 font-medium truncate">{m.name}</div>
+                          <div className="col-span-5 flex items-center justify-between gap-1 truncate">
                             <span className="truncate">{m.role}</span>
-                            {isOff && <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400/30 shrink-0" />}
+                            {isOff && (
+                              <span className={`text-[10px] font-mono ${active ? 'text-zinc-300' : 'text-[#647084]'}`}>
+                                officer
+                              </span>
+                            )}
                           </div>
                         </motion.div>
                       )
@@ -508,41 +487,20 @@ export default function LiveSimulator() {
             </div>
           </div>
 
-          {/* Live directory.txt Card */}
-          <motion.div
-            animate={
-              fileFlashing
-                ? { borderColor: 'rgba(56, 189, 248, 0.85)', boxShadow: '0 0 24px rgba(56, 189, 248, 0.25)' }
-                : { borderColor: 'rgba(39, 39, 42, 1)', boxShadow: '0 0 0 rgba(0,0,0,0)' }
-            }
-            transition={{ duration: 0.35 }}
-            className="rounded-2xl border bg-zinc-900/60 p-5 space-y-2.5"
-          >
+          <div className="neu-card rounded-2xl p-5 space-y-2.5">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm font-bold text-white">
-                <HardDrive className="w-4 h-4 text-sky-400" /> directory.txt on Disk
-              </div>
-              <span
-                className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border transition ${
-                  fileFlashing
-                    ? 'bg-sky-500/25 border-sky-400 text-sky-200'
-                    : 'bg-zinc-800 border-zinc-700 text-zinc-400'
-                }`}
-              >
-                {fileFlashing ? 'save_directory() wrote ("w")' : 'Synced'}
+              <h3 className="text-sm font-semibold text-[#161922] font-mono">directory.txt</h3>
+              <span className="text-[11px] font-medium text-[#647084]">
+                {fileSavedNotice ? 'Saved ("w")' : 'Synced'}
               </span>
             </div>
-            <pre className="p-3.5 rounded-xl bg-[#0a0a0f] border border-zinc-800/80 font-mono text-xs text-sky-200 whitespace-pre-wrap min-h-[70px]">
+            <pre className="neu-inset p-3.5 rounded-xl font-mono text-xs text-[#2c3340] whitespace-pre-wrap min-h-[70px]">
               {fileText || '(empty file)'}
             </pre>
-          </motion.div>
+          </div>
 
-          {/* What Just Happened */}
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
-              What Just Happened Under the Hood
-            </div>
-            <p className="text-sm text-zinc-200 leading-relaxed">{explain}</p>
+          <div className="neu-inset rounded-2xl p-4 text-xs sm:text-sm text-[#475569]">
+            {explain}
           </div>
         </div>
       </div>

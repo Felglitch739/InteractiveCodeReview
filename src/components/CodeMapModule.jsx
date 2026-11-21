@@ -1,32 +1,15 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Check, Copy, CornerDownLeft, Terminal, FileInput, Repeat, GitBranch, FileCode2, MessageSquareQuote, Lightbulb, Code2, Mic } from 'lucide-react'
+import { Check, Copy, Mic } from 'lucide-react'
 import { CODE_BLOCKS, getCleanCodeString } from '../data/projectData'
 import PythonLine from './PythonLine'
 
 const FILTERS = [
-  { id: 'all', label: 'All Code' },
-  { id: 'functions', label: 'Functions (def)' },
+  { id: 'all', label: 'All' },
+  { id: 'functions', label: 'Functions' },
   { id: 'file', label: 'File Loading' },
-  { id: 'menu', label: 'Main Menu (while)' },
+  { id: 'menu', label: 'Main Loop' },
 ]
-
-const TONE_BADGE = {
-  indigo: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30',
-  emerald: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-  amber: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
-  sky: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
-  rose: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
-}
-
-function BadgeIcon({ badge }) {
-  if (badge.includes('Value-Returning')) return <CornerDownLeft className="w-3.5 h-3.5" />
-  if (badge.includes('Void')) return <Terminal className="w-3.5 h-3.5" />
-  if (badge.includes('Startup') || badge.includes('Menu')) return <FileInput className="w-3.5 h-3.5" />
-  if (badge.includes('Loop')) return <Repeat className="w-3.5 h-3.5" />
-  if (badge.includes('Project')) return <FileCode2 className="w-3.5 h-3.5" />
-  return <GitBranch className="w-3.5 h-3.5" />
-}
 
 export default function CodeMapModule({ onAskTutor }) {
   const [filter, setFilter] = useState('all')
@@ -38,43 +21,37 @@ export default function CodeMapModule({ onAskTutor }) {
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(getCleanCodeString())
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1800)
     } catch {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1800)
+      // fallback silently
     }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1800)
   }
 
   let runningLine = 1
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-indigo-400 mb-1.5">
-            <Code2 className="w-3.5 h-3.5" /> Module 01 · Clean Source Explorer
-          </span>
-          <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-            Interactive Code Map
+          <h2 className="text-2xl font-semibold tracking-tight text-[#161922]">
+            Clean Source Walkthrough
           </h2>
-          <p className="text-zinc-400 text-sm md:text-base mt-1 max-w-2xl">
-            Full clean Python code with comments removed. Click any section to see what it does,
-            why we designed it this way, and how to explain it out loud in class.
+          <p className="text-sm text-[#647084] mt-1 max-w-xl">
+            Select any block of <span className="font-mono text-[#161922]">student_club_directory.py</span> to inspect how it works and how to explain it in class.
           </p>
         </div>
 
         <button
           onClick={handleCopy}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20 transition cursor-pointer shrink-0 self-start md:self-auto"
+          className="neu-btn inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium text-[#161922] cursor-pointer self-start sm:self-auto"
         >
-          {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-          {copied ? 'Copied Clean Code!' : 'Copy Clean Python'}
+          {copied ? <Check className="w-3.5 h-3.5 text-[#15803d]" /> : <Copy className="w-3.5 h-3.5 text-[#647084]" />}
+          <span>{copied ? 'Copied' : 'Copy Python'}</span>
         </button>
       </div>
 
-      {/* Filter Pills */}
+      {/* Filter Bar */}
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => {
           const active = filter === f.id
@@ -82,10 +59,8 @@ export default function CodeMapModule({ onAskTutor }) {
             <button
               key={f.id}
               onClick={() => setFilter(f.id)}
-              className={`relative px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer border ${
-                active
-                  ? 'text-white border-indigo-500/50 bg-indigo-500/20'
-                  : 'text-zinc-400 border-zinc-800 bg-zinc-900/60 hover:text-zinc-200 hover:border-zinc-700'
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-medium cursor-pointer transition ${
+                active ? 'neu-inset text-[#161922] font-semibold' : 'neu-btn text-[#647084]'
               }`}
             >
               {f.label}
@@ -94,21 +69,16 @@ export default function CodeMapModule({ onAskTutor }) {
         })}
       </div>
 
-      {/* Main Split */}
+      {/* Split View */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left: Code Editor */}
-        <div className="lg:col-span-7 rounded-2xl border border-zinc-800/90 bg-[#0d0d12] overflow-hidden shadow-2xl">
-          <div className="flex items-center justify-between px-4 py-3 bg-zinc-900/90 border-b border-zinc-800">
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-rose-500/80" />
-              <span className="w-3 h-3 rounded-full bg-amber-400/80" />
-              <span className="w-3 h-3 rounded-full bg-emerald-400/80" />
-            </div>
-            <span className="font-mono text-xs text-zinc-400">student_club_directory.py</span>
-            <span className="text-[11px] text-zinc-500">Click any block</span>
+        {/* Code Well */}
+        <div className="lg:col-span-7 code-well rounded-2xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06] text-xs text-zinc-400">
+            <span className="font-mono text-zinc-300">student_club_directory.py</span>
+            <span>Click any section</span>
           </div>
 
-          <div className="max-h-[680px] overflow-y-auto py-3 divide-y divide-zinc-900/80">
+          <div className="max-h-[650px] overflow-y-auto py-2 divide-y divide-white/[0.04]">
             {CODE_BLOCKS.map((block, bIdx) => {
               const isSelected = block.id === selectedId
               const isDimmed = filter !== 'all' && block.category !== filter
@@ -119,30 +89,20 @@ export default function CodeMapModule({ onAskTutor }) {
                 <div
                   key={block.id}
                   onClick={() => setSelectedId(block.id)}
-                  className={`relative px-4 py-2.5 cursor-pointer transition-all duration-200 ${
-                    isSelected
-                      ? 'bg-indigo-500/[0.12]'
-                      : 'hover:bg-zinc-800/35'
+                  className={`relative px-4 py-2.5 cursor-pointer transition-colors ${
+                    isSelected ? 'bg-white/[0.07]' : 'hover:bg-white/[0.03]'
                   } ${isDimmed ? 'opacity-25' : 'opacity-100'}`}
                 >
                   {isSelected && (
                     <motion.div
-                      layoutId="activeCodeIndicator"
-                      className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-400 shadow-[0_0_12px_rgba(129,140,248,0.8)]"
-                      transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                      layoutId="activeCodeBar"
+                      className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-[#60a5fa]"
+                      transition={{ type: 'spring', stiffness: 420, damping: 34 }}
                     />
                   )}
 
-                  <div className="mb-1.5 ml-10">
-                    <span
-                      className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                        isSelected
-                          ? 'bg-indigo-500 text-white'
-                          : 'bg-zinc-800 text-zinc-400'
-                      }`}
-                    >
-                      {block.tag}
-                    </span>
+                  <div className="mb-1 ml-10 text-[10.5px] font-mono tracking-wide text-zinc-400">
+                    {block.tag}
                   </div>
 
                   <div className="font-mono text-[12.5px] leading-relaxed overflow-x-auto">
@@ -163,50 +123,46 @@ export default function CodeMapModule({ onAskTutor }) {
           </div>
         </div>
 
-        {/* Right: Animated Inspector */}
-        <div className="lg:col-span-5 lg:sticky lg:top-28">
+        {/* Minimalist Neumorphic Inspector */}
+        <div className="lg:col-span-5 lg:sticky lg:top-32">
           <AnimatePresence mode="wait">
             <motion.div
               key={selectedBlock.id}
-              initial={{ opacity: 0, y: 12, scale: 0.985 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -10, scale: 0.985 }}
-              transition={{ duration: 0.2 }}
-              className="rounded-2xl border border-zinc-800 studio-card backdrop-blur-md p-6 space-y-5"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.18 }}
+              className="neu-card rounded-2xl p-6 space-y-5"
             >
-              <div>
-                <span
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${
-                    TONE_BADGE[selectedBlock.tone]
-                  }`}
-                >
-                  <BadgeIcon badge={selectedBlock.badge} /> {selectedBlock.badge}
+              <div className="space-y-1.5">
+                <span className="inline-block px-2.5 py-1 rounded-lg neu-inset text-[11px] font-medium text-[#475569]">
+                  {selectedBlock.badge}
                 </span>
-                <h3 className="text-xl font-bold text-white mt-3 font-mono">
+                <h3 className="text-lg font-semibold text-[#161922] font-mono pt-1">
                   {selectedBlock.title}
                 </h3>
               </div>
 
               <div className="space-y-1.5">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                  What It Does
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#7a869a]">
+                  What it does
                 </div>
-                <p className="text-sm text-zinc-200 leading-relaxed">{selectedBlock.what}</p>
+                <p className="text-sm text-[#2c3340] leading-relaxed">{selectedBlock.what}</p>
               </div>
 
-              <div className="pt-4 border-t border-zinc-800/80 space-y-1.5">
-                <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-400">
-                  <Lightbulb className="w-3.5 h-3.5" /> Why We Built It This Way
+              <div className="pt-4 border-t border-[#d7dde7] space-y-1.5">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#7a869a]">
+                  Design rationale
                 </div>
-                <p className="text-sm text-zinc-300 leading-relaxed">{selectedBlock.why}</p>
+                <p className="text-sm text-[#4a5568] leading-relaxed">{selectedBlock.why}</p>
               </div>
 
-              <div className="pt-4 border-t border-zinc-800/80 space-y-2">
-                <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-sky-400">
-                  <MessageSquareQuote className="w-3.5 h-3.5" /> Say It Out Loud (Presentation)
+              <div className="pt-4 border-t border-[#d7dde7] space-y-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#7a869a]">
+                  How to explain it
                 </div>
-                <div className="rounded-xl bg-sky-500/10 border border-sky-500/25 p-4 text-sm text-sky-100 leading-relaxed italic">
-                  "{selectedBlock.script}"
+                <div className="neu-inset rounded-xl p-4 text-sm text-[#1e2430] leading-relaxed">
+                  “{selectedBlock.script}”
                 </div>
               </div>
 
@@ -214,12 +170,13 @@ export default function CodeMapModule({ onAskTutor }) {
                 <button
                   onClick={() =>
                     onAskTutor(
-                      `Explain "${selectedBlock.title}" in simple CSCI 1380 terms and give me one quick question the professor might ask about it.`
+                      `Explain "${selectedBlock.title}" simply and give me one quick question the professor might ask.`
                     )
                   }
-                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-200 cursor-pointer transition"
+                  className="neu-btn w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-medium text-[#161922] cursor-pointer"
                 >
-                  <Mic className="w-3.5 h-3.5" /> Ask Voice Tutor About This Block
+                  <Mic className="w-3.5 h-3.5 text-[#475569]" strokeWidth={1.8} />
+                  <span>Ask Voice Tutor about this section</span>
                 </button>
               )}
             </motion.div>
