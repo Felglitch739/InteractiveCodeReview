@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Mic, Volume2, VolumeX, Send, X, KeyRound, Loader2, Square, Trash2, Check
+  Mic, AudioLines, Volume2, VolumeX, Send, X, KeyRound, Loader2, Square, Trash2, Check
 } from 'lucide-react'
 import { getCleanCodeString } from '../data/projectData'
 import { GeminiLiveClient, PcmStreamPlayer } from '../utils/liveAudioEngine'
@@ -62,7 +62,7 @@ function FormattedText({ text, isUser }) {
 const WELCOME_MSG = {
   id: 1,
   role: 'assistant',
-  text: 'Ask anything about your Student Club Member Directory code. Tap the microphone below to speak, or type a question.',
+  text: 'Ask anything about your Student Club Member Directory code. Use the mic to record a voice note, the waveform icon for hands-free live mode, or type below.',
 }
 
 export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClearQueued }) {
@@ -72,8 +72,15 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
   const [speakerMuted, setSpeakerMuted] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [liveConnected, setLiveConnected] = useState(false)
+
+  // Manual voice-note recording (Mic button)
   const [recording, setRecording] = useState(false)
   const [recordSeconds, setRecordSeconds] = useState(0)
+
+  // Hands-free live mode (AudioLines button)
+  const [handsFree, setHandsFree] = useState(false)
+  const [handsFreeHearing, setHandsFreeHearing] = useState(false)
+
   const [modelSpeaking, setModelSpeaking] = useState(false)
   const [thinking, setThinking] = useState(false)
   const [meterLevels, setMeterLevels] = useState([18, 22, 26, 22, 18, 22, 18])
@@ -83,6 +90,11 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
 
   const liveClientRef = useRef(null)
   const playerRef = useRef(null)
+  const activeModelMsgIdRef = useRef(null)
+  const scrollRef = useRef(null)
+  const inputRef = useRef(null)
+
+  // Refs for manual recording
   const mediaRecorderRef = useRef(null)
   const audioStreamRef = useRef(null)
   const chunksRef = useRef([])
@@ -90,20 +102,37 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
   const meterCtxRef = useRef(null)
   const rafRef = useRef(null)
   const timerRef = useRef(null)
-  const activeModelMsgIdRef = useRef(null)
-  const scrollRef = useRef(null)
-  const inputRef = useRef(null)
+
+  // Refs for hands-free live mode
+  const hfActiveRef = useRef(false)
+  const hfStreamRef = useRef(null)
+  const hfCtxRef = useRef(null)
+  const hfRafRef = useRef(null)
+  const hfRecorderRef = useRef(null)
+  const hfChunksRef = useRef([])
+  const hfBusyRef = useRef(false) // true while transcribing or tutor speaking
+  const modelSpeakingRef = useRef(false)
+  const thinkingRef = useRef(false)
+
+  useEffect(() => {
+    modelSpeakingRef.current = modelSpeaking
+  }, [modelSpeaking])
+
+  useEffect(() => {
+    thinkingRef.current = thinking
+  }, [thinking])
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages, thinking, recording])
+  }, [messages, thinking, recording, handsFree])
 
   useEffect(() => {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 200)
     } else {
+      stopHandsFree()
       cleanupRecording(true)
       disconnectAll()
     }
@@ -111,6 +140,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
 
   useEffect(
     () => () => {
+      stopHandsFree()
       cleanupRecording(true)
       disconnectAll()
     },
@@ -160,6 +190,36 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
     }
     setRecording(false)
     setRecordSeconds(0)
+    setMeterLevels([18, 22, 26, 22, 18, 22, 18])
+  }
+
+  const stopHandsFree = () => {
+    hfActiveRef.current = false
+    hfBusyRef.current = false
+    if (hfRafRef.current) {
+      cancelAnimationFrame(hfRafRef.current)
+      hfRafRef.current = null
+    }
+    if (hfRecorderRef.current && hfRecorderRef.current.state !== 'inactive') {
+      try {
+        hfRecorderRef.current.onstop = null
+        hfRecorderRef.current.stop()
+      } catch {
+        // ignore
+      }
+    }
+    hfRecorderRef.current = null
+    hfChunksRef.current = []
+    if (hfCtxRef.current) {
+      hfCtxRef.current.close().catch(() => {})
+      hfCtxRef.current = null
+    }
+    if (hfStreamRef.current) {
+      hfStreamRef.current.getTracks().forEach((t) => t.stop())
+      hfStreamRef.current = null
+    }
+    setHandsFree(false)
+    setHandsFreeHearing(false)
     setMeterLevels([18, 22, 26, 22, 18, 22, 18])
   }
 
@@ -250,7 +310,6 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
     }
   }
 
-  // Transcribe recorded voice blob accurately via /api/transcribe (or direct Gemini locally)
   const transcribeAudioBlob = async (blob, mimeType) => {
     const audioBase64 = await blobToBase64(blob)
     const directKey = getDirectKey()
@@ -283,7 +342,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                 parts: [
                   { inlineData: { mimeType: cleanMime, data: audioBase64 } },
                   {
-                    text: 'Transcribe exactly what the speaker said (in English or Spanish). Return ONLY the spoken words with normal punctuation and nothing else. If silent or unintelligible, return an empty string.',
+                    text: 'Transcribe exactly what the speaker said (in English or Spanish). Return ONLY the spoken words with normal punctuation and nothing else. If silent, noise, or unintelligible, return an empty string.',
                   },
                 ],
               },
@@ -301,7 +360,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
     throw new Error(lastErr)
   }
 
-  const handleRecordedVoice = async (blob, mimeType) => {
+  const handleRecordedVoice = async (blob, mimeType, silentIfEmpty = false) => {
     setErrorMsg('')
     playerRef.current?.interrupt()
     activeModelMsgIdRef.current = null
@@ -309,12 +368,11 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
     const placeholderId = Date.now() + Math.random()
     setMessages((prev) => [
       ...prev,
-      { id: placeholderId, role: 'user', text: 'Listening to your voice...' },
+      { id: placeholderId, role: 'user', text: 'Transcribing...' },
     ])
     setThinking(true)
 
     try {
-      // Transcribe audio AND ensure Gemini 3.8 Live is ready in parallel for fastest response
       const [transcript, client] = await Promise.all([
         transcribeAudioBlob(blob, mimeType),
         ensureLiveSession(),
@@ -323,7 +381,9 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
       if (!transcript) {
         setMessages((prev) => prev.filter((m) => m.id !== placeholderId))
         setThinking(false)
-        setErrorMsg('No speech detected—tap the mic, speak clearly, then tap Send.')
+        if (!silentIfEmpty) {
+          setErrorMsg('No speech detected—speak clearly and try again.')
+        }
         return
       }
 
@@ -338,8 +398,10 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
     }
   }
 
+  // ---- Mode 1: Push-to-Record & Send (Mic icon — kept exactly as Felix liked!) ----
   const startRecording = async () => {
     if (connecting || thinking) return
+    stopHandsFree()
     setErrorMsg('')
     ensurePlayer()
     playerRef.current?.interrupt()
@@ -370,14 +432,13 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
         if (!wasCanceled && chunks.length > 0) {
           const blob = new Blob(chunks, { type: finalMime })
           if (blob.size > 600) {
-            handleRecordedVoice(blob, finalMime)
+            handleRecordedVoice(blob, finalMime, false)
           } else {
             setErrorMsg('Recording was too short—speak your question and tap Send.')
           }
         }
       }
 
-      // Live 7-bar mic volume meter
       try {
         const AudioCtx = window.AudioContext || window.webkitAudioContext
         const ctx = new AudioCtx()
@@ -398,7 +459,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
         }
         tick()
       } catch {
-        // optional visual meter
+        // optional meter
       }
 
       recorder.start()
@@ -418,6 +479,180 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
         setErrorMsg('Microphone permission is blocked. Allow microphone access in your browser address bar.')
       } else {
         setErrorMsg(err?.message || 'Could not start microphone.')
+      }
+    }
+  }
+
+  // ---- Mode 2: Hands-Free Live Mode (AudioLines icon — auto-listens & auto-sends on pause!) ----
+  const startHandsFree = async () => {
+    if (handsFree) {
+      stopHandsFree()
+      return
+    }
+    cleanupRecording(true)
+    setErrorMsg('')
+    ensurePlayer()
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setErrorMsg('Live voice mode requires HTTPS and a modern browser.')
+      return
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      })
+      hfStreamRef.current = stream
+      hfActiveRef.current = true
+      hfBusyRef.current = false
+      setHandsFree(true)
+      setHandsFreeHearing(false)
+
+      // Pre-connect Gemini 3.8 Live immediately so replies start with zero extra handshake wait
+      ensureLiveSession().catch(() => {})
+
+      const AudioCtx = window.AudioContext || window.webkitAudioContext
+      const ctx = new AudioCtx()
+      if (ctx.state === 'suspended') await ctx.resume()
+      hfCtxRef.current = ctx
+
+      const src = ctx.createMediaStreamSource(stream)
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 512
+      src.connect(analyser)
+
+      const timeData = new Float32Array(analyser.fftSize)
+      const freqData = new Uint8Array(analyser.frequencyBinCount)
+      const mime = pickSupportedAudioMime()
+
+      let noiseFloor = 0.012
+      let isCapturing = false
+      let speechStartAt = 0
+      let lastVoicedAt = 0
+      const startedAt = performance.now()
+
+      const beginClip = () => {
+        if (!hfActiveRef.current || isCapturing) return
+        try {
+          hfChunksRef.current = []
+          const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream)
+          hfRecorderRef.current = rec
+          rec.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0) hfChunksRef.current.push(e.data)
+          }
+          rec.onstop = async () => {
+            if (!hfActiveRef.current) return
+            const chunks = hfChunksRef.current
+            hfChunksRef.current = []
+            const clipDuration = performance.now() - speechStartAt
+            if (chunks.length === 0 || clipDuration < 420) return
+
+            const finalMime = rec.mimeType || mime || 'audio/webm'
+            const blob = new Blob(chunks, { type: finalMime })
+            if (blob.size < 1000) return
+
+            hfBusyRef.current = true
+            try {
+              await handleRecordedVoice(blob, finalMime, true)
+            } finally {
+              hfBusyRef.current = false
+            }
+          }
+          rec.start()
+          isCapturing = true
+          speechStartAt = performance.now()
+          setHandsFreeHearing(true)
+        } catch {
+          isCapturing = false
+        }
+      }
+
+      const finishClip = () => {
+        if (!isCapturing) return
+        isCapturing = false
+        setHandsFreeHearing(false)
+        const rec = hfRecorderRef.current
+        hfRecorderRef.current = null
+        if (rec && rec.state !== 'inactive') {
+          try {
+            rec.stop()
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      const loop = () => {
+        if (!hfActiveRef.current) return
+
+        // Pause listening while tutor is thinking or speaking so laptop speakers never echo back
+        if (hfBusyRef.current || thinkingRef.current || modelSpeakingRef.current) {
+          if (isCapturing) {
+            // Discard accidental capture during playback
+            const rec = hfRecorderRef.current
+            if (rec) rec.onstop = null
+            finishClip()
+          }
+          setMeterLevels([18, 22, 26, 22, 18, 22, 18])
+          hfRafRef.current = requestAnimationFrame(loop)
+          return
+        }
+
+        analyser.getFloatTimeDomainData(timeData)
+        analyser.getByteFrequencyData(freqData)
+
+        let sqSum = 0
+        for (let i = 0; i < timeData.length; i++) sqSum += timeData[i] * timeData[i]
+        const rms = Math.sqrt(sqSum / timeData.length)
+
+        const bars = [2, 5, 9, 14, 20, 28, 38].map((idx) =>
+          Math.max(16, Math.min(100, Math.round((freqData[idx] / 255) * 100)))
+        )
+        setMeterLevels(bars)
+
+        const now = performance.now()
+        // Calibrate room noise floor for the first 400ms before triggering
+        if (now - startedAt < 400) {
+          noiseFloor = noiseFloor * 0.85 + rms * 0.15
+          hfRafRef.current = requestAnimationFrame(loop)
+          return
+        }
+
+        const threshold = Math.max(0.015, noiseFloor * 2.15)
+
+        if (rms > threshold) {
+          lastVoicedAt = now
+          if (!isCapturing) {
+            beginClip()
+          }
+        } else if (!isCapturing) {
+          noiseFloor = Math.max(0.004, Math.min(0.03, noiseFloor * 0.96 + rms * 0.04))
+        }
+
+        // Auto-send ~900ms after user stops speaking (hands-free!)
+        if (isCapturing && now - lastVoicedAt > 900) {
+          finishClip()
+        }
+
+        // Max 18s single utterance safeguard
+        if (isCapturing && now - speechStartAt > 18000) {
+          finishClip()
+        }
+
+        hfRafRef.current = requestAnimationFrame(loop)
+      }
+
+      loop()
+    } catch (err) {
+      stopHandsFree()
+      if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
+        setErrorMsg('Microphone permission is blocked. Allow microphone access in your browser address bar.')
+      } else {
+        setErrorMsg(err?.message || 'Could not start live mode.')
       }
     }
   }
@@ -445,7 +680,12 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
 
   const handleVoiceChange = (nextVoice) => {
     setVoiceName(nextVoice)
-    if (liveConnected) disconnectAll()
+    if (liveConnected) {
+      liveClientRef.current?.close()
+      liveClientRef.current = null
+      setLiveConnected(false)
+      if (handsFree) ensureLiveSession(nextVoice).catch(() => {})
+    }
   }
 
   const saveLocalKey = (val) => {
@@ -455,6 +695,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
   }
 
   const clearChat = () => {
+    stopHandsFree()
     cleanupRecording(true)
     disconnectAll()
     setErrorMsg('')
@@ -472,6 +713,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => {
+              stopHandsFree()
               cleanupRecording(true)
               disconnectAll()
               onClose()
@@ -492,7 +734,13 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
               <div>
                 <h3 className="text-sm font-semibold text-ink">Voice Tutor</h3>
                 <p className="text-[11px] text-ink-muted">
-                  {connecting ? 'Connecting...' : liveConnected ? 'Connected · Live Voice' : 'Ready'}
+                  {handsFree
+                    ? 'Hands-free live'
+                    : connecting
+                    ? 'Connecting...'
+                    : liveConnected
+                    ? 'Connected · Live Voice'
+                    : 'Ready'}
                 </p>
               </div>
 
@@ -540,6 +788,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
 
                 <button
                   onClick={() => {
+                    stopHandsFree()
                     cleanupRecording(true)
                     disconnectAll()
                     onClose()
@@ -612,8 +861,8 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
               )}
             </div>
 
-            {/* Speaking Strip */}
-            {modelSpeaking && !recording && (
+            {/* Speaking Strip (when not in hands-free bar) */}
+            {modelSpeaking && !recording && !handsFree && (
               <div className="mx-5 mb-2.5 px-3.5 py-2 rounded-xl neu-inset flex items-center justify-between text-xs text-ink">
                 <div className="flex items-center gap-2.5">
                   <div className="flex items-end gap-0.5 h-3.5">
@@ -653,8 +902,53 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
               ))}
             </div>
 
-            {/* Bottom Input Bar OR Active Recording Bar */}
-            {recording ? (
+            {/* Bottom Controls: Hands-Free Live Bar OR Manual Recording Bar OR Default Input Bar */}
+            {handsFree ? (
+              <div className="p-4 border-t neu-divider flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex items-end gap-0.5 h-5 shrink-0">
+                    {meterLevels.map((lvl, idx) => (
+                      <span
+                        key={idx}
+                        style={{
+                          height: `${modelSpeaking ? [35, 70, 50, 85, 60, 75, 40][idx] : lvl}%`,
+                          backgroundColor: handsFreeHearing ? '#10b981' : 'var(--text-primary)',
+                        }}
+                        className="w-[3px] rounded-full transition-all duration-75"
+                      />
+                    ))}
+                  </div>
+                  <span className="text-xs font-medium text-ink truncate">
+                    {handsFreeHearing
+                      ? 'Hearing you...'
+                      : thinking
+                      ? 'Thinking...'
+                      : modelSpeaking
+                      ? `Speaking (${voiceName})`
+                      : 'Live — just speak'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {modelSpeaking && (
+                    <button
+                      type="button"
+                      onClick={() => playerRef.current?.interrupt()}
+                      className="neu-btn px-2.5 py-2 rounded-xl text-xs font-semibold cursor-pointer"
+                    >
+                      Interrupt
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={stopHandsFree}
+                    className="neu-btn-primary px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer"
+                  >
+                    End live
+                  </button>
+                </div>
+              </div>
+            ) : recording ? (
               <div className="p-4 border-t neu-divider flex items-center justify-between gap-2.5">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse shrink-0" />
@@ -695,16 +989,26 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                   e.preventDefault()
                   sendTextMessage(input)
                 }}
-                className="p-4 border-t neu-divider flex items-center gap-2.5"
+                className="p-4 border-t neu-divider flex items-center gap-2"
               >
                 <button
                   type="button"
                   onClick={startRecording}
                   disabled={connecting || thinking}
-                  title="Record your voice question"
+                  title="Record voice note (tap Send when done)"
                   className="neu-btn p-2.5 rounded-xl disabled:opacity-40 cursor-pointer shrink-0"
                 >
                   <Mic className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={startHandsFree}
+                  disabled={connecting || thinking}
+                  title="Hands-free live conversation (auto-listens & replies)"
+                  className="neu-btn p-2.5 rounded-xl disabled:opacity-40 cursor-pointer shrink-0"
+                >
+                  <AudioLines className="w-4 h-4" />
                 </button>
 
                 <input
@@ -713,7 +1017,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   placeholder="Ask a question..."
-                  className="neu-inset flex-1 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-ink placeholder:text-ink-muted focus:outline-none"
+                  className="neu-inset flex-1 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-ink placeholder:text-ink-muted focus:outline-none min-w-0"
                 />
 
                 <button
