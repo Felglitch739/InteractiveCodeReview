@@ -251,9 +251,12 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
         }
       },
       onSpeechEnd: () => {
+        // Digital silence frames now stream continuously so Gemini Live's server VAD triggers automatically
         if (liveClientRef.current?.ready) {
-          liveClientRef.current.sendAudioStreamEnd()
           setThinking(true)
+          setTimeout(() => {
+            setThinking((t) => (t ? false : t))
+          }, 4500)
         }
       },
       onUserSpeakingChange: (speaking) => {

@@ -165,6 +165,10 @@ export class MicPcmStreamer {
           this.onSpeechEnd?.()
         }
         this.onLevels?.([14, 14, 14, 14, 14, 14, 14])
+        // Keep streaming digital silence while muted so any in-progress turn closes cleanly
+        const outLen = Math.floor(input.length / ratio)
+        const silencePcm = new Int16Array(outLen)
+        this.onChunk?.(bytesToBase64(new Uint8Array(silencePcm.buffer)))
         return
       }
 
@@ -188,9 +192,11 @@ export class MicPcmStreamer {
       }
       this.onLevels?.(bars)
 
-      // Adaptive noise floor & hands-free speech detection
+      // Adaptive noise floor & continuous silence-gated streaming:
+      // Gemini 3.8 Live's VAD needs continuous PCM frames (digital zeros during silence)
+      // to detect end-of-speech cleanly without laptop fan noise stalling it.
       const now = performance.now()
-      const threshold = Math.max(0.014, this.noiseFloor * 2.35)
+      const threshold = Math.max(0.012, this.noiseFloor * 2.1)
 
       if (rms > threshold) {
         this.lastSpeechAt = now
@@ -200,33 +206,29 @@ export class MicPcmStreamer {
         }
       } else if (!this.isSpeaking) {
         // Slowly calibrate ambient room/laptop fan level when idle
-        this.noiseFloor = Math.max(0.004, Math.min(0.032, this.noiseFloor * 0.96 + rms * 0.04))
+        this.noiseFloor = Math.max(0.003, Math.min(0.028, this.noiseFloor * 0.96 + rms * 0.04))
       }
 
-      // If user just paused for > 550ms after speaking, flush clean end-of-turn so Gemini replies instantly
-      if (this.isSpeaking && now - this.lastSpeechAt > 550) {
+      // 280ms grace tail after last voiced frame so natural pauses inside words stay smooth
+      if (this.isSpeaking && now - this.lastSpeechAt > 280) {
         this.isSpeaking = false
         this.onUserSpeakingChange?.(false)
         this.onSpeechEnd?.()
-        return
       }
 
-      // Only stream PCM while actively speaking (or during the 550ms tail) so fan hum never stalls VAD
-      if (!this.isSpeaking) {
-        return
-      }
-
-      // Downsample to 16kHz Int16 PCM
+      // Always send 16kHz Int16 PCM: real voice while speaking, pure digital zeros when silent
       const outLen = Math.floor(input.length / ratio)
       const pcm = new Int16Array(outLen)
-      for (let i = 0; i < outLen; i++) {
-        const srcIdx = i * ratio
-        const idx0 = Math.floor(srcIdx)
-        const idx1 = Math.min(idx0 + 1, input.length - 1)
-        const frac = srcIdx - idx0
-        const sample = input[idx0] * (1 - frac) + input[idx1] * frac
-        const clamped = Math.max(-1, Math.min(1, sample))
-        pcm[i] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff
+      if (this.isSpeaking) {
+        for (let i = 0; i < outLen; i++) {
+          const srcIdx = i * ratio
+          const idx0 = Math.floor(srcIdx)
+          const idx1 = Math.min(idx0 + 1, input.length - 1)
+          const frac = srcIdx - idx0
+          const sample = input[idx0] * (1 - frac) + input[idx1] * frac
+          const clamped = Math.max(-1, Math.min(1, sample))
+          pcm[i] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff
+        }
       }
 
       const b64 = bytesToBase64(new Uint8Array(pcm.buffer))
@@ -353,7 +355,7 @@ export class GeminiLiveClient {
                   startOfSpeechSensitivity: 'START_SENSITIVITY_HIGH',
                   endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH',
                   prefixPaddingMs: 120,
-                  silenceDurationMs: 450,
+                  silenceDurationMs: 400,
                 },
               },
               inputAudioTranscription: {},
