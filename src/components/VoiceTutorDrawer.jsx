@@ -161,31 +161,41 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
         setConnecting(false)
       },
       onUserTranscript: (chunk) => {
+        if (!chunk) return
         activeModelMsgIdRef.current = null
-        setMessages((prev) => {
-          if (activeUserMsgIdRef.current) {
-            return prev.map((m) =>
-              m.id === activeUserMsgIdRef.current ? { ...m, text: m.text + chunk } : m
-            )
-          }
+        if (!activeUserMsgIdRef.current) {
           const newId = Date.now() + Math.random()
           activeUserMsgIdRef.current = newId
-          return [...prev, { id: newId, role: 'user', text: chunk.trimStart() }]
-        })
+          setMessages((prev) =>
+            prev.some((m) => m.id === newId)
+              ? prev
+              : [...prev, { id: newId, role: 'user', text: chunk.trimStart() }]
+          )
+        } else {
+          const targetId = activeUserMsgIdRef.current
+          setMessages((prev) =>
+            prev.map((m) => (m.id === targetId ? { ...m, text: m.text + chunk } : m))
+          )
+        }
       },
       onModelTranscript: (chunk) => {
+        if (!chunk) return
         setThinking(false)
         activeUserMsgIdRef.current = null
-        setMessages((prev) => {
-          if (activeModelMsgIdRef.current) {
-            return prev.map((m) =>
-              m.id === activeModelMsgIdRef.current ? { ...m, text: m.text + chunk } : m
-            )
-          }
+        if (!activeModelMsgIdRef.current) {
           const newId = Date.now() + Math.random()
           activeModelMsgIdRef.current = newId
-          return [...prev, { id: newId, role: 'assistant', text: chunk.trimStart() }]
-        })
+          setMessages((prev) =>
+            prev.some((m) => m.id === newId)
+              ? prev
+              : [...prev, { id: newId, role: 'assistant', text: chunk.trimStart() }]
+          )
+        } else {
+          const targetId = activeModelMsgIdRef.current
+          setMessages((prev) =>
+            prev.map((m) => (m.id === targetId ? { ...m, text: m.text + chunk } : m))
+          )
+        }
       },
       onAudioChunk: (b64, rate) => {
         setThinking(false)
@@ -234,10 +244,16 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
   const startLiveCall = async () => {
     setErrorMsg('')
     try {
-      const client = await ensureLiveSession()
-      if (!micRef.current) {
-        const mic = new MicPcmStreamer({
-          onChunk: (b64) => client.sendPcmAudio(b64),
+      // Request mic & unlock AudioContext FIRST inside the click gesture (required by Opera GX / Safari)
+      ensurePlayer()
+      let mic = micRef.current
+      if (!mic) {
+        mic = new MicPcmStreamer({
+          onChunk: (b64) => {
+            if (liveClientRef.current?.ready) {
+              liveClientRef.current.sendPcmAudio(b64)
+            }
+          },
           onLevels: (bars) => setMeterLevels(bars),
         })
         await mic.start()
@@ -245,12 +261,17 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
       }
       setMicActive(true)
       setMicMuted(false)
+
+      await ensureLiveSession()
     } catch (err) {
+      micRef.current?.stop()
+      micRef.current = null
+      setMicActive(false)
       if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
         setErrorMsg(
           'Microphone permission was blocked. Click the lock/mic icon in your address bar, allow Microphone, and try again.'
         )
-      } else if (!errorMsg) {
+      } else {
         setErrorMsg(err?.message || 'Could not start live microphone.')
       }
     }
