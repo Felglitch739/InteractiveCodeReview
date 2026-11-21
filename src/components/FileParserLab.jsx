@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Play, Pause, SkipBack, SkipForward, RotateCcw, Scissors,
-  CheckCircle2, XCircle, AlertTriangle, FileText, ArrowRight, ListPlus
+  CheckCircle2, XCircle, AlertTriangle, FileText, ArrowRight,
+  ListPlus, Volume2, VolumeX, Loader2, Square
 } from 'lucide-react'
 import { INITIAL_MEMBERS } from '../data/projectData'
+import { getGeminiTtsUrl } from '../utils/ttsClient'
 
 const STEPS = [
   { id: 0, label: '1. readlines()', code: 'for line in saved_lines:' },
@@ -15,26 +17,46 @@ const STEPS = [
   { id: 5, label: '6. append()', code: 'member_list.append(...) & member_roles.append(...)' },
 ]
 
+function getStepNarration(step, info) {
+  const { leftPart, rightPart, hasTwoParts, extractedName, allValid } = info
+  switch (step) {
+    case 0:
+      return `Step 1, readlines. When Python reads a line from directory dot text, it brings an invisible newline character, backslash n, at the end. If we do not remove it, the role comparison later would fail.`
+    case 1:
+      return `Step 2, replace. Calling line dot replace removes the backslash n newline character by swapping it with an empty string. Now our line is completely clean and ready to split.`
+    case 2:
+      return hasTwoParts
+        ? `Step 3, split. Splitting on the bar Role separator cuts the line into two pieces in a list called parts. Parts zero has ${leftPart}, and parts one already has the clean role: ${rightPart}.`
+        : `Step 3, split. Python looks for the exact bar Role separator, but it is missing from this line, so parts only has one item instead of two.`
+    case 3:
+      return `Step 4, string slicing. Every character in parts zero has an index starting at zero. Indices zero through five are the six characters of Name colon space. Writing six colon grabs everything from index six to the end, giving us ${extractedName || 'an empty string'}.`
+    case 4:
+      return allValid
+        ? `Step 5, safety check. Python checks four conditions: two parts exist, the first six characters match Name colon space, and neither the name nor the role is empty. All four are true, so file valid stays true.`
+        : `Step 5, safety check. At least one of the four format checks failed, so file valid becomes false and Python warns the user instead of loading a broken record.`
+    case 5:
+      return allValid
+        ? `Step 6, append. Python appends ${extractedName} to member list and ${rightPart} to member roles. Because both are appended together, they stay aligned at the exact same index.`
+        : `Step 6, append is skipped because file valid is false. Broken lines are never added to the lists.`
+    default:
+      return ''
+  }
+}
+
 export default function FileParserLab() {
   const [lineText, setLineText] = useState('Name: Sara Astorga | Role: Vice President')
   const [customInput, setCustomInput] = useState('Name: Sara Astorga | Role: Vice President')
   const [step, setStep] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [fast, setFast] = useState(false)
+  const [voiceEnabled, setVoiceEnabled] = useState(true)
+  const [ttsLoading, setTtsLoading] = useState(false)
+  const [speaking, setSpeaking] = useState(false)
+  const [ttsError, setTtsError] = useState('')
 
-  useEffect(() => {
-    if (!playing) return
-    const timer = setInterval(() => {
-      setStep((prev) => {
-        if (prev >= STEPS.length - 1) {
-          setPlaying(false)
-          return prev
-        }
-        return prev + 1
-      })
-    }, fast ? 1050 : 2100)
-    return () => clearInterval(timer)
-  }, [playing, fast])
+  const audioRef = useRef(null)
+  const advanceTimerRef = useRef(null)
+  const activeTokenRef = useRef(0)
 
   const parts = lineText.split(' | Role: ')
   const hasTwoParts = parts.length === 2
@@ -47,11 +69,111 @@ export default function FileParserLab() {
   const checkRole = rightPart !== ''
   const allValid = hasTwoParts && checkPrefix && checkName && checkRole
 
-  const selectPreset = (text) => {
+  const parsedInfo = { leftPart, rightPart, hasTwoParts, extractedName, allValid }
+
+  const stopNarration = () => {
+    activeTokenRef.current += 1
+    if (advanceTimerRef.current) {
+      clearTimeout(advanceTimerRef.current)
+      advanceTimerRef.current = null
+    }
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.currentTime = 0
+      audioRef.current = null
+    }
+    setSpeaking(false)
+    setTtsLoading(false)
+  }
+
+  useEffect(() => {
+    return () => stopNarration()
+  }, [])
+
+  const speakStep = async (targetStep, autoAdvanceAfter = false) => {
+    stopNarration()
+    const token = activeTokenRef.current
+    setTtsError('')
+    setTtsLoading(true)
+
+    try {
+      const script = getStepNarration(targetStep, parsedInfo)
+      const wavUrl = await getGeminiTtsUrl(script, 'Kore')
+      if (token !== activeTokenRef.current) return
+
+      setTtsLoading(false)
+      const audio = new Audio(wavUrl)
+      audioRef.current = audio
+      setSpeaking(true)
+
+      audio.onended = () => {
+        if (token !== activeTokenRef.current) return
+        setSpeaking(false)
+        audioRef.current = null
+        if (autoAdvanceAfter) {
+          if (targetStep < STEPS.length - 1) {
+            advanceTimerRef.current = setTimeout(() => {
+              if (token !== activeTokenRef.current) return
+              setStep(targetStep + 1)
+            }, 500)
+          } else {
+            setPlaying(false)
+          }
+        }
+      }
+
+      audio.onerror = () => {
+        if (token !== activeTokenRef.current) return
+        setSpeaking(false)
+        audioRef.current = null
+        if (autoAdvanceAfter) setPlaying(false)
+      }
+
+      await audio.play()
+    } catch (err) {
+      if (token !== activeTokenRef.current) return
+      setTtsLoading(false)
+      setSpeaking(false)
+      setTtsError('Voice narration unavailable right now—switched to silent timer.')
+      if (autoAdvanceAfter) {
+        advanceTimerRef.current = setTimeout(() => {
+          if (token !== activeTokenRef.current) return
+          if (targetStep < STEPS.length - 1) setStep(targetStep + 1)
+          else setPlaying(false)
+        }, fast ? 1100 : 2100)
+      }
+    }
+  }
+
+  // Handle Auto-Play (syncs with HD voice if voiceEnabled, or uses timer if muted)
+  useEffect(() => {
+    if (!playing) return
+
+    if (voiceEnabled) {
+      speakStep(step, true)
+      return () => stopNarration()
+    }
+
+    const timer = setTimeout(() => {
+      if (step < STEPS.length - 1) setStep((s) => s + 1)
+      else setPlaying(false)
+    }, fast ? 1050 : 2100)
+
+    return () => clearTimeout(timer)
+  }, [playing, step, voiceEnabled, fast, lineText])
+
+  const goToStep = (nextStep) => {
     setPlaying(false)
+    stopNarration()
+    setStep(nextStep)
+  }
+
+  const selectPreset = (text, startStep = 0) => {
+    setPlaying(false)
+    stopNarration()
     setLineText(text)
     setCustomInput(text)
-    setStep(0)
+    setStep(startStep)
   }
 
   return (
@@ -60,17 +182,17 @@ export default function FileParserLab() {
         <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-sky-400 mb-1.5">
           <FileText className="w-3.5 h-3.5" /> Module 02 · Startup Parsing Pipeline
         </span>
-        <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">
+        <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-white">
           Visual Lab: <code className="text-sky-400">replace()</code>, <code className="text-violet-400">split()</code> &amp; <code className="text-emerald-400">[6:]</code>
         </h2>
         <p className="text-zinc-400 text-sm md:text-base mt-1 max-w-3xl">
-          Watch step-by-step how Python cleans a line from <code className="text-zinc-200">directory.txt</code>,
-          cuts it into two pieces, slices off <code className="text-zinc-200">"Name: "</code>, and loads it into both parallel lists before the menu opens.
+          Watch — and <strong>listen</strong> — step by step as Python cleans a line from <code className="text-zinc-200">directory.txt</code>,
+          cuts it apart, slices off <code className="text-zinc-200">"Name: "</code>, and loads it into both parallel lists before the menu opens.
         </p>
       </div>
 
       {/* Preset Selector */}
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 space-y-3">
+      <div className="rounded-2xl border border-zinc-800 studio-card p-4 space-y-3">
         <div className="flex flex-wrap gap-2">
           {INITIAL_MEMBERS.map((m, idx) => {
             const full = `Name: ${m.name} | Role: ${m.role}`
@@ -78,10 +200,10 @@ export default function FileParserLab() {
             return (
               <button
                 key={m.id}
-                onClick={() => selectPreset(full)}
+                onClick={() => selectPreset(full, 0)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
                   active
-                    ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-200'
+                    ? 'bg-emerald-500/15 border-emerald-500/45 text-emerald-200'
                     : 'bg-zinc-950/70 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
                 }`}
               >
@@ -90,13 +212,7 @@ export default function FileParserLab() {
             )
           })}
           <button
-            onClick={() => {
-              const broken = 'Sara Astorga - Vice President'
-              setPlaying(false)
-              setLineText(broken)
-              setCustomInput(broken)
-              setStep(2)
-            }}
+            onClick={() => selectPreset('Sara Astorga - Vice President', 2)}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 transition cursor-pointer"
           >
             Test Broken Line
@@ -108,10 +224,10 @@ export default function FileParserLab() {
             type="text"
             value={customInput}
             onChange={(e) => setCustomInput(e.target.value)}
-            className="flex-1 bg-zinc-950 border border-zinc-800 focus:border-indigo-500 focus:outline-none rounded-xl px-3.5 py-2 font-mono text-xs md:text-sm text-zinc-100"
+            className="flex-1 bg-zinc-950 border border-zinc-800 focus:border-emerald-500 focus:outline-none rounded-xl px-3.5 py-2 font-mono text-xs md:text-sm text-zinc-100"
           />
           <button
-            onClick={() => selectPreset(customInput)}
+            onClick={() => selectPreset(customInput, 0)}
             className="px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-white transition cursor-pointer"
           >
             Load Custom Line
@@ -119,11 +235,11 @@ export default function FileParserLab() {
         </div>
       </div>
 
-      {/* Transport Controls */}
+      {/* Transport & Voice Controls */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => { setPlaying(false); setStep((s) => Math.max(0, s - 1)) }}
+            onClick={() => goToStep(Math.max(0, step - 1))}
             disabled={step === 0}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-zinc-900 border border-zinc-800 text-zinc-200 hover:bg-zinc-800 disabled:opacity-40 cursor-pointer transition"
           >
@@ -132,17 +248,22 @@ export default function FileParserLab() {
 
           <button
             onClick={() => {
-              if (!playing && step === STEPS.length - 1) setStep(0)
-              setPlaying((p) => !p)
+              if (playing) {
+                setPlaying(false)
+                stopNarration()
+              } else {
+                if (step === STEPS.length - 1) setStep(0)
+                setPlaying(true)
+              }
             }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/25 cursor-pointer transition"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 cursor-pointer transition"
           >
             {playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-            {playing ? 'Pause' : 'Auto-Play Steps'}
+            {playing ? 'Pause Walkthrough' : voiceEnabled ? 'Play Narrated Walkthrough' : 'Auto-Play Steps'}
           </button>
 
           <button
-            onClick={() => { setPlaying(false); setStep((s) => Math.min(STEPS.length - 1, s + 1)) }}
+            onClick={() => goToStep(Math.min(STEPS.length - 1, step + 1))}
             disabled={step === STEPS.length - 1}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-zinc-900 border border-zinc-800 text-zinc-200 hover:bg-zinc-800 disabled:opacity-40 cursor-pointer transition"
           >
@@ -150,30 +271,49 @@ export default function FileParserLab() {
           </button>
 
           <button
-            onClick={() => { setPlaying(false); setStep(0) }}
+            onClick={() => goToStep(0)}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200 cursor-pointer transition"
           >
             <RotateCcw className="w-3.5 h-3.5" /> Reset
           </button>
         </div>
 
-        <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-xl p-1">
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => setFast(false)}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer transition ${
-              !fast ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-200'
+            onClick={() => {
+              if (voiceEnabled) stopNarration()
+              setVoiceEnabled((v) => !v)
+            }}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border cursor-pointer transition ${
+              voiceEnabled
+                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                : 'bg-zinc-900 border-zinc-800 text-zinc-400'
             }`}
           >
-            1x
+            {voiceEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+            {voiceEnabled ? 'HD Voice On' : 'Voice Off'}
           </button>
-          <button
-            onClick={() => setFast(true)}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer transition ${
-              fast ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            2x
-          </button>
+
+          {!voiceEnabled && (
+            <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-xl p-1">
+              <button
+                onClick={() => setFast(false)}
+                className={`px-2.5 py-0.5 rounded-lg text-xs font-semibold cursor-pointer transition ${
+                  !fast ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                1x
+              </button>
+              <button
+                onClick={() => setFast(true)}
+                className={`px-2.5 py-0.5 rounded-lg text-xs font-semibold cursor-pointer transition ${
+                  fast ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                2x
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -185,12 +325,12 @@ export default function FileParserLab() {
           return (
             <button
               key={s.id}
-              onClick={() => { setPlaying(false); setStep(s.id) }}
+              onClick={() => goToStep(s.id)}
               className={`relative px-3 py-2.5 rounded-xl text-left text-xs font-semibold border transition cursor-pointer ${
                 active
-                  ? 'bg-indigo-500/20 border-indigo-400 text-white shadow-lg shadow-indigo-500/15'
+                  ? 'bg-emerald-500/15 border-emerald-400 text-white shadow-lg shadow-emerald-500/10'
                   : done
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                  ? 'bg-zinc-900/90 border-emerald-500/30 text-emerald-300'
                   : 'bg-zinc-900/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
               }`}
             >
@@ -201,11 +341,42 @@ export default function FileParserLab() {
       </div>
 
       {/* Animated Visual Stage */}
-      <div className="rounded-2xl border border-zinc-800 bg-[#0d0d12] p-6 min-h-[320px] shadow-2xl overflow-hidden">
+      <div className="rounded-2xl border border-zinc-800 bg-[#0d0d12] p-6 min-h-[330px] shadow-2xl overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800 mb-6 font-mono text-xs md:text-sm">
-          <span className="text-indigo-300">{STEPS[step].code}</span>
-          <span className="text-zinc-500">Step {step + 1} / 6</span>
+          <span className="text-emerald-300">{STEPS[step].code}</span>
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => (speaking ? stopNarration() : speakStep(step, false))}
+              disabled={ttsLoading}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-sans text-xs font-semibold border cursor-pointer transition ${
+                speaking
+                  ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                  : 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300 hover:bg-emerald-500/25'
+              }`}
+            >
+              {ttsLoading ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading voice...
+                </>
+              ) : speaking ? (
+                <>
+                  <Square className="w-3 h-3 fill-current" /> Stop Voice
+                </>
+              ) : (
+                <>
+                  <Volume2 className="w-3.5 h-3.5" /> Listen to Step {step + 1}
+                </>
+              )}
+            </button>
+            <span className="text-zinc-500 text-xs">Step {step + 1} / 6</span>
+          </div>
         </div>
+
+        {ttsError && (
+          <div className="mb-4 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200">
+            {ttsError}
+          </div>
+        )}
 
         <AnimatePresence mode="wait">
           {step === 0 && (
@@ -276,16 +447,16 @@ export default function FileParserLab() {
               className="space-y-4"
             >
               <p className="text-sm text-zinc-300">
-                <strong className="text-white">Cutting with <code>split(" | Role: ")</code>:</strong> Searches for the exact separator and splits the string into a 2-item list called <code className="text-indigo-300">parts</code>.
+                <strong className="text-white">Cutting with <code>split(" | Role: ")</code>:</strong> Searches for the exact separator and splits the string into a 2-item list called <code className="text-sky-300">parts</code>.
               </p>
               <div className="flex flex-col md:flex-row items-stretch gap-4">
                 <motion.div
                   initial={{ x: 20, opacity: 0 }}
                   animate={{ x: 0, opacity: 1 }}
                   transition={{ type: 'spring', stiffness: 260, damping: 22 }}
-                  className="flex-1 p-4 rounded-xl bg-indigo-500/15 border border-indigo-500/40"
+                  className="flex-1 p-4 rounded-xl bg-sky-500/15 border border-sky-500/40"
                 >
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-300 mb-1">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-sky-300 mb-1">
                     parts[0] · Left side
                   </div>
                   <div className="font-mono text-base font-bold text-white">"{leftPart}"</div>
@@ -315,7 +486,7 @@ export default function FileParserLab() {
                 )}
               </div>
               <p className="text-xs text-zinc-400">
-                <code className="text-amber-300">parts[1]</code> already has the clean role, while <code className="text-indigo-300">parts[0]</code> still has <code className="text-zinc-200">"Name: "</code> in front of the person's name.
+                <code className="text-amber-300">parts[1]</code> already has the clean role, while <code className="text-sky-300">parts[0]</code> still has <code className="text-zinc-200">"Name: "</code> in front of the person's name.
               </p>
             </motion.div>
           )}
@@ -330,7 +501,7 @@ export default function FileParserLab() {
               className="space-y-4"
             >
               <p className="text-sm text-zinc-300">
-                <strong className="text-white">Why index 6?</strong> Every character in <code className="text-indigo-300">parts[0]</code> has an index starting at 0. Indices <strong className="text-violet-300">0–5</strong> are <code className="text-violet-300">"Name: "</code> (6 characters). Slicing <code className="text-emerald-300">[6:]</code> grabs everything from index 6 to the end:
+                <strong className="text-white">Why index 6?</strong> Every character in <code className="text-sky-300">parts[0]</code> has an index starting at 0. Indices <strong className="text-violet-300">0–5</strong> are <code className="text-violet-300">"Name: "</code> (6 characters). Slicing <code className="text-emerald-300">[6:]</code> grabs everything from index 6 to the end:
               </p>
 
               <div className="flex flex-wrap gap-1.5 py-2">
@@ -474,9 +645,9 @@ export default function FileParserLab() {
         </AnimatePresence>
       </div>
 
-      <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-4 text-sm text-indigo-100">
+      <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 p-4 text-sm text-sky-100">
         <strong className="text-white">Why does this run BEFORE the <code>while</code> loop?</strong>{' '}
-        Code inside <code className="text-indigo-300">def</code> waits until called, but code outside runs automatically from top to bottom on startup. Without this block, lists would start empty and saving with <code className="text-indigo-300">"w"</code> would overwrite older members.
+        Code inside <code className="text-sky-300">def</code> waits until called, but code outside runs automatically from top to bottom on startup. Without this block, lists would start empty and saving with <code className="text-sky-300">"w"</code> would overwrite older members.
       </div>
     </div>
   )
