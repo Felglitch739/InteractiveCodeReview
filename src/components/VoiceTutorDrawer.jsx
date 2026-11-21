@@ -72,6 +72,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
   const [liveConnected, setLiveConnected] = useState(false)
   const [micActive, setMicActive] = useState(false)
   const [micMuted, setMicMuted] = useState(false)
+  const [userSpeaking, setUserSpeaking] = useState(false)
   const [modelSpeaking, setModelSpeaking] = useState(false)
   const [thinking, setThinking] = useState(false)
   const [meterLevels, setMeterLevels] = useState([18, 22, 26, 22, 18, 22, 18])
@@ -130,6 +131,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
     micRef.current = null
     setMicActive(false)
     setMicMuted(false)
+    setUserSpeaking(false)
 
     liveClientRef.current?.close()
     liveClientRef.current = null
@@ -241,6 +243,25 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
     }
   }
 
+  const createMicStreamer = () =>
+    new MicPcmStreamer({
+      onChunk: (b64) => {
+        if (liveClientRef.current?.ready) {
+          liveClientRef.current.sendPcmAudio(b64)
+        }
+      },
+      onSpeechEnd: () => {
+        if (liveClientRef.current?.ready) {
+          liveClientRef.current.sendAudioStreamEnd()
+          setThinking(true)
+        }
+      },
+      onUserSpeakingChange: (speaking) => {
+        setUserSpeaking(speaking)
+      },
+      onLevels: (bars) => setMeterLevels(bars),
+    })
+
   const startLiveCall = async () => {
     setErrorMsg('')
     try {
@@ -248,14 +269,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
       ensurePlayer()
       let mic = micRef.current
       if (!mic) {
-        mic = new MicPcmStreamer({
-          onChunk: (b64) => {
-            if (liveClientRef.current?.ready) {
-              liveClientRef.current.sendPcmAudio(b64)
-            }
-          },
-          onLevels: (bars) => setMeterLevels(bars),
-        })
+        mic = createMicStreamer()
         await mic.start()
         micRef.current = mic
       }
@@ -317,11 +331,8 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
       if (wasInCall) {
         setTimeout(() => {
           ensureLiveSession(nextVoice)
-            .then(async (client) => {
-              const mic = new MicPcmStreamer({
-                onChunk: (b64) => client.sendPcmAudio(b64),
-                onLevels: (bars) => setMeterLevels(bars),
-              })
+            .then(async () => {
+              const mic = createMicStreamer()
               await mic.start()
               micRef.current = mic
               setMicActive(true)
@@ -515,8 +526,12 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                     <span className="text-xs font-semibold text-emerald-200 truncate">
                       {micMuted
                         ? 'Mic muted'
+                        : userSpeaking
+                        ? 'Hearing you...'
+                        : thinking
+                        ? 'Responding...'
                         : modelSpeaking
-                        ? 'Tutor speaking (interrupt anytime)'
+                        ? 'Tutor speaking (just talk to interrupt)'
                         : 'Live — just speak!'}
                     </span>
                   </div>

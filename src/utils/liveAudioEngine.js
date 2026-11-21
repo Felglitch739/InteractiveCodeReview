@@ -106,18 +106,25 @@ export class PcmStreamPlayer {
 
 /**
  * Captures live microphone audio, downsamples to 16kHz Int16 PCM,
- * streams base64 chunks to Gemini Live, and drives a real-time 7-bar audio meter.
+ * uses an adaptive noise gate so laptop fan/room hum doesn't block Gemini's VAD,
+ * auto-signals end-of-speech ~550ms after you pause (no manual muting needed!),
+ * and drives a real-time 7-bar audio meter.
  */
 export class MicPcmStreamer {
-  constructor({ onChunk, onLevels }) {
+  constructor({ onChunk, onLevels, onSpeechEnd, onUserSpeakingChange }) {
     this.onChunk = onChunk
     this.onLevels = onLevels
+    this.onSpeechEnd = onSpeechEnd
+    this.onUserSpeakingChange = onUserSpeakingChange
     this.stream = null
     this.ctx = null
     this.processor = null
     this.source = null
     this.muted = false
     this.running = false
+    this.noiseFloor = 0.008
+    this.isSpeaking = false
+    this.lastSpeechAt = 0
   }
 
   async start() {
@@ -152,11 +159,22 @@ export class MicPcmStreamer {
       const input = ev.inputBuffer.getChannelData(0)
 
       if (this.muted) {
+        if (this.isSpeaking) {
+          this.isSpeaking = false
+          this.onUserSpeakingChange?.(false)
+          this.onSpeechEnd?.()
+        }
         this.onLevels?.([14, 14, 14, 14, 14, 14, 14])
         return
       }
 
-      // Compute 7 visual bars from input energy
+      // Compute RMS energy and 7 visual bars
+      let sqSum = 0
+      for (let i = 0; i < input.length; i++) {
+        sqSum += input[i] * input[i]
+      }
+      const rms = Math.sqrt(sqSum / input.length)
+
       const step = Math.floor(input.length / 7)
       const bars = []
       for (let b = 0; b < 7; b++) {
@@ -169,6 +187,34 @@ export class MicPcmStreamer {
         bars.push(Math.max(16, Math.min(100, Math.round(avg * 420))))
       }
       this.onLevels?.(bars)
+
+      // Adaptive noise floor & hands-free speech detection
+      const now = performance.now()
+      const threshold = Math.max(0.014, this.noiseFloor * 2.35)
+
+      if (rms > threshold) {
+        this.lastSpeechAt = now
+        if (!this.isSpeaking) {
+          this.isSpeaking = true
+          this.onUserSpeakingChange?.(true)
+        }
+      } else if (!this.isSpeaking) {
+        // Slowly calibrate ambient room/laptop fan level when idle
+        this.noiseFloor = Math.max(0.004, Math.min(0.032, this.noiseFloor * 0.96 + rms * 0.04))
+      }
+
+      // If user just paused for > 550ms after speaking, flush clean end-of-turn so Gemini replies instantly
+      if (this.isSpeaking && now - this.lastSpeechAt > 550) {
+        this.isSpeaking = false
+        this.onUserSpeakingChange?.(false)
+        this.onSpeechEnd?.()
+        return
+      }
+
+      // Only stream PCM while actively speaking (or during the 550ms tail) so fan hum never stalls VAD
+      if (!this.isSpeaking) {
+        return
+      }
 
       // Downsample to 16kHz Int16 PCM
       const outLen = Math.floor(input.length / ratio)
@@ -195,10 +241,17 @@ export class MicPcmStreamer {
 
   setMuted(muted) {
     this.muted = muted
+    if (muted && this.isSpeaking) {
+      this.isSpeaking = false
+      this.onUserSpeakingChange?.(false)
+      this.onSpeechEnd?.()
+    }
   }
 
   stop() {
     this.running = false
+    this.isSpeaking = false
+    this.onUserSpeakingChange?.(false)
     if (this.processor) {
       this.processor.disconnect()
       this.processor.onaudioprocess = null
@@ -292,6 +345,15 @@ export class GeminiLiveClient {
                   voiceConfig: {
                     prebuiltVoiceConfig: { voiceName: this.voiceName },
                   },
+                },
+              },
+              realtimeInputConfig: {
+                automaticActivityDetection: {
+                  disabled: false,
+                  startOfSpeechSensitivity: 'START_SENSITIVITY_HIGH',
+                  endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH',
+                  prefixPaddingMs: 120,
+                  silenceDurationMs: 450,
                 },
               },
               inputAudioTranscription: {},
@@ -392,6 +454,17 @@ export class GeminiLiveClient {
             mimeType: 'audio/pcm;rate=16000',
             data: base64Pcm,
           },
+        },
+      })
+    )
+  }
+
+  sendAudioStreamEnd() {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
+    this.ws.send(
+      JSON.stringify({
+        realtimeInput: {
+          audioStreamEnd: true,
         },
       })
     )
