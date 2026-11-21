@@ -44,7 +44,7 @@ export default function LiveSimulator() {
   const [fileSavedNotice, setFileSavedNotice] = useState(false)
   const [vars, setVars] = useState({ choice: '""', position: '—', officer_count: '—' })
   const [explain, setExplain] = useState(
-    'Startup loaded 5 records from directory.txt into member_list and member_roles. Select an option below or type directly into the console.'
+    'Startup loaded 5 records from directory.txt into member_list and member_roles. Click an option below or type directly into the console.'
   )
   const [inputVal, setInputVal] = useState('')
   const [logs, setLogs] = useState([
@@ -315,25 +315,24 @@ export default function LiveSimulator() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight text-[#161922]">
+        <h2 className="text-2xl font-semibold tracking-tight text-ink">
           Live Simulator
         </h2>
-        <p className="text-sm text-[#647084] mt-1 max-w-2xl">
-          Run the program interactively and watch <span className="font-mono text-[#161922]">member_list</span>,{' '}
-          <span className="font-mono text-[#161922]">member_roles</span>, and{' '}
-          <span className="font-mono text-[#161922]">directory.txt</span> update in real time.
+        <p className="text-sm text-ink-muted mt-1 max-w-2xl">
+          Run the program interactively and watch <span className="font-mono text-ink">member_list</span>,{' '}
+          <span className="font-mono text-ink">member_roles</span>, and{' '}
+          <span className="font-mono text-ink">directory.txt</span> update in real time.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Console */}
         <div className="lg:col-span-6 space-y-3.5">
           <div className="code-well rounded-2xl overflow-hidden flex flex-col h-[500px]">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
-              <span className="font-mono text-xs text-zinc-300">python student_club_directory.py</span>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.08]">
+              <span className="font-mono text-xs text-zinc-200">python student_club_directory.py</span>
               <button
                 onClick={resetAll}
-                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-zinc-400 hover:text-white cursor-pointer transition"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[11px] font-semibold text-zinc-100 cursor-pointer transition"
               >
                 <RotateCcw className="w-3 h-3" /> Reset
               </button>
@@ -371,7 +370,7 @@ export default function LiveSimulator() {
                 setInputVal('')
                 handleCommand(v)
               }}
-              className="flex items-center gap-2 p-3 border-t border-white/[0.06] bg-black/25"
+              className="flex items-center gap-2 p-3 border-t border-white/[0.08] bg-black/25"
             >
               <span className="font-mono text-xs text-zinc-400 shrink-0 hidden sm:inline">
                 {promptLabel}
@@ -382,12 +381,12 @@ export default function LiveSimulator() {
                 onChange={(e) => setInputVal(e.target.value)}
                 disabled={mode === 'exited'}
                 placeholder={mode === 'exited' ? 'Program ended' : 'Type input...'}
-                className="flex-1 bg-white/[0.06] rounded-lg px-3 py-1.5 font-mono text-xs text-white focus:outline-none disabled:opacity-40"
+                className="flex-1 bg-white/[0.08] border border-white/10 rounded-lg px-3 py-1.5 font-mono text-xs text-white focus:outline-none disabled:opacity-40"
               />
               <button
                 type="submit"
                 disabled={mode === 'exited'}
-                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white disabled:opacity-40 cursor-pointer transition"
+                className="p-2 rounded-lg bg-white/15 hover:bg-white/25 text-white disabled:opacity-40 cursor-pointer transition"
               >
                 <Send className="w-3.5 h-3.5" />
               </button>
@@ -398,7 +397,7 @@ export default function LiveSimulator() {
             {mode === 'exited' ? (
               <button
                 onClick={restartFromDisk}
-                className="neu-btn-dark inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium cursor-pointer"
+                className="neu-btn-primary inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" /> Re-run Program (Loads directory.txt)
               </button>
@@ -407,7 +406,7 @@ export default function LiveSimulator() {
                 <button
                   key={b.label}
                   onClick={() => handleCommand(b.val)}
-                  className="neu-btn px-3 py-1.5 rounded-xl text-xs font-medium text-[#161922] cursor-pointer"
+                  className="neu-btn px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer"
                 >
                   {b.label}
                 </button>
@@ -416,24 +415,23 @@ export default function LiveSimulator() {
           </div>
         </div>
 
-        {/* Memory & File Inspector */}
         <div className="lg:col-span-6 space-y-5">
           <div className="neu-card rounded-2xl p-5 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-[#161922]">Parallel Lists in Memory</h3>
-              <span className="font-mono text-xs text-[#647084]">len = {members.length}</span>
+              <h3 className="text-sm font-semibold text-ink">Parallel Lists in Memory</h3>
+              <span className="font-mono text-xs text-ink-muted">len = {members.length}</span>
             </div>
 
             <div className="flex flex-wrap gap-2">
               {Object.entries(vars).map(([k, v]) => (
-                <div key={k} className="neu-inset px-2.5 py-1 rounded-lg font-mono text-xs text-[#475569]">
-                  {k} = <span className="text-[#161922] font-semibold">{v}</span>
+                <div key={k} className="neu-inset px-2.5 py-1 rounded-lg font-mono text-xs text-ink-muted">
+                  {k} = <span className="text-ink font-semibold">{v}</span>
                 </div>
               ))}
             </div>
 
             <div className="space-y-2">
-              <div className="grid grid-cols-12 gap-2 px-2 text-[11px] font-mono text-[#7a869a]">
+              <div className="grid grid-cols-12 gap-2 px-2 text-[11px] font-mono text-ink-muted">
                 <div className="col-span-2">i</div>
                 <div className="col-span-5">member_list[i]</div>
                 <div className="col-span-5">member_roles[i]</div>
@@ -446,7 +444,7 @@ export default function LiveSimulator() {
                       key="empty"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
-                      className="neu-inset text-center py-8 rounded-xl text-[#7a869a] font-mono text-xs"
+                      className="neu-inset text-center py-8 rounded-xl text-ink-muted font-mono text-xs"
                     >
                       member_list = [] · member_roles = []
                     </motion.div>
@@ -463,17 +461,17 @@ export default function LiveSimulator() {
                           exit={{ opacity: 0, x: 18 }}
                           transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                           className={`grid grid-cols-12 gap-2 items-center px-3 py-2 rounded-xl text-xs transition ${
-                            active ? 'neu-btn-dark' : 'neu-inset text-[#161922]'
+                            active ? 'neu-btn-primary' : 'neu-inset text-ink'
                           }`}
                         >
-                          <div className={`col-span-2 font-mono font-semibold ${active ? 'text-zinc-300' : 'text-[#647084]'}`}>
+                          <div className={`col-span-2 font-mono font-semibold ${active ? 'opacity-80' : 'text-ink-muted'}`}>
                             [{idx}]
                           </div>
                           <div className="col-span-5 font-medium truncate">{m.name}</div>
                           <div className="col-span-5 flex items-center justify-between gap-1 truncate">
                             <span className="truncate">{m.role}</span>
                             {isOff && (
-                              <span className={`text-[10px] font-mono ${active ? 'text-zinc-300' : 'text-[#647084]'}`}>
+                              <span className={`text-[10px] font-mono ${active ? 'opacity-80' : 'text-ink-muted'}`}>
                                 officer
                               </span>
                             )}
@@ -489,17 +487,17 @@ export default function LiveSimulator() {
 
           <div className="neu-card rounded-2xl p-5 space-y-2.5">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-[#161922] font-mono">directory.txt</h3>
-              <span className="text-[11px] font-medium text-[#647084]">
+              <h3 className="text-sm font-semibold text-ink font-mono">directory.txt</h3>
+              <span className="text-[11px] font-semibold text-ink-muted">
                 {fileSavedNotice ? 'Saved ("w")' : 'Synced'}
               </span>
             </div>
-            <pre className="neu-inset p-3.5 rounded-xl font-mono text-xs text-[#2c3340] whitespace-pre-wrap min-h-[70px]">
+            <pre className="neu-inset p-3.5 rounded-xl font-mono text-xs text-ink-2 whitespace-pre-wrap min-h-[70px]">
               {fileText || '(empty file)'}
             </pre>
           </div>
 
-          <div className="neu-inset rounded-2xl p-4 text-xs sm:text-sm text-[#475569]">
+          <div className="neu-inset rounded-2xl p-4 text-xs sm:text-sm text-ink-2">
             {explain}
           </div>
         </div>

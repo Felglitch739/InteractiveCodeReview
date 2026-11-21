@@ -57,25 +57,28 @@ export default function ChooseMemberTracer() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight text-[#161922]">
+        <h2 className="text-2xl font-semibold tracking-tight text-ink">
           How <span className="font-mono">choose_member()</span> Works
         </h2>
-        <p className="text-sm text-[#647084] mt-1 max-w-2xl">
+        <p className="text-sm text-ink-muted mt-1 max-w-2xl">
           Converts the 1-based number displayed on screen into the real 0-based list index, returning{' '}
-          <span className="font-mono text-[#161922]">-1</span> if the user enters{' '}
-          <span className="font-mono text-[#161922]">0</span> to cancel.
+          <span className="font-mono text-ink">-1</span> if the user enters{' '}
+          <span className="font-mono text-ink">0</span> to cancel.
         </p>
       </div>
 
       {/* Controls */}
       <div className="neu-card rounded-2xl p-5 space-y-3.5">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
+          Test an input value
+        </div>
         <div className="flex flex-wrap gap-2">
           {PRESETS.map((p) => (
             <button
               key={p.val}
               onClick={() => startTrace(p.val)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-medium cursor-pointer transition ${
-                choice === p.val ? 'neu-inset text-[#161922] font-semibold' : 'neu-btn text-[#526075]'
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer transition ${
+                choice === p.val ? 'neu-btn-primary' : 'neu-btn text-ink-2'
               }`}
             >
               {p.label}
@@ -89,11 +92,11 @@ export default function ChooseMemberTracer() {
             value={customVal}
             onChange={(e) => setCustomVal(e.target.value)}
             placeholder="Try any input..."
-            className="neu-inset flex-1 min-w-[180px] rounded-xl px-3.5 py-2 font-mono text-xs text-[#161922] focus:outline-none"
+            className="neu-inset flex-1 min-w-[180px] rounded-xl px-3.5 py-2 font-mono text-xs text-ink focus:outline-none"
           />
           <button
             onClick={() => startTrace(customVal)}
-            className="neu-btn-dark inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium cursor-pointer"
+            className="neu-btn-primary inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer"
           >
             <Play className="w-3.5 h-3.5" /> Trace loop
           </button>
@@ -102,7 +105,7 @@ export default function ChooseMemberTracer() {
               setAnimating(false)
               setActiveIter(INITIAL_MEMBERS.length)
             }}
-            className="neu-btn inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-[#475569] cursor-pointer"
+            className="neu-btn inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" /> Instant result
           </button>
@@ -117,9 +120,9 @@ export default function ChooseMemberTracer() {
           </div>
 
           {choice === '0' ? (
-            <div className="neu-inset rounded-xl p-5 text-sm text-[#2c3340] space-y-1.5">
-              <div className="font-semibold text-[#161922]">Canceled with "0"</div>
-              <p className="text-xs text-[#526075] leading-relaxed">
+            <div className="neu-inset rounded-xl p-5 text-sm text-ink-2 space-y-1.5">
+              <div className="font-semibold text-ink">Canceled with "0"</div>
+              <p className="text-xs text-ink-muted leading-relaxed">
                 <span className="font-mono">member_choice != "0"</span> becomes False, the loop exits immediately, and the function executes{' '}
                 <span className="font-mono">return -1</span>.
               </p>
@@ -137,16 +140,17 @@ export default function ChooseMemberTracer() {
                     key={m.id}
                     className={`relative flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition ${
                       isMatch
-                        ? 'neu-btn-dark'
+                        ? 'neu-btn-primary'
                         : isCurrent
-                        ? 'neu-card-sm text-[#161922]'
-                        : 'neu-inset text-[#647084]'
+                        ? 'neu-card-sm text-ink'
+                        : 'neu-inset text-ink-muted'
                     }`}
                   >
                     {isCurrent && !isMatch && (
                       <motion.div
                         layoutId="neuLoopPointer"
-                        className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full bg-[#2563eb]"
+                        style={{ backgroundColor: 'var(--accent-bar)' }}
+                        className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full"
                         transition={{ type: 'spring', stiffness: 420, damping: 32 }}
                       />
                     )}
@@ -162,7 +166,7 @@ export default function ChooseMemberTracer() {
                       {!isChecked ? (
                         <span className="opacity-45">…</span>
                       ) : isMatch ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-300">
+                        <span className="inline-flex items-center gap-1">
                           <Check className="w-3.5 h-3.5" /> pos = {i}
                         </span>
                       ) : (
@@ -176,7 +180,7 @@ export default function ChooseMemberTracer() {
           )}
 
           {doneChecking && choice !== '0' && matchedIndex === -1 && (
-            <div className="rounded-xl p-3.5 bg-[#fbe9ec] text-xs text-[#9f1239]">
+            <div className="state-err rounded-xl p-3.5 text-xs">
               No match found—<span className="font-mono">position</span> stays <span className="font-mono">-1</span>, so the loop prints an error and asks again without crashing.
             </div>
           )}
@@ -184,10 +188,10 @@ export default function ChooseMemberTracer() {
 
         <div className="lg:col-span-5 space-y-4">
           <div className="neu-card rounded-2xl p-6 space-y-2.5">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-[#7a869a]">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
               Return Value
             </div>
-            <div className="text-2xl font-mono font-semibold text-[#161922]">
+            <div className="text-2xl font-mono font-semibold text-ink">
               {choice === '0'
                 ? 'return -1'
                 : matchedIndex !== -1 && doneChecking
@@ -196,7 +200,7 @@ export default function ChooseMemberTracer() {
                 ? 'Tracing...'
                 : 'Repeats loop'}
             </div>
-            <p className="text-sm text-[#4a5568] leading-relaxed">
+            <p className="text-sm text-ink-2 leading-relaxed">
               {choice === '0'
                 ? 'The main menu checks if position != -1:, sees -1, and safely skips any edit or deletion.'
                 : matchedIndex !== -1
@@ -206,12 +210,12 @@ export default function ChooseMemberTracer() {
           </div>
 
           <div className="neu-inset rounded-2xl p-5 space-y-2">
-            <div className="text-xs font-semibold text-[#161922]">
+            <div className="text-xs font-semibold text-ink">
               Why initialize position to -1 instead of 0?
             </div>
-            <p className="text-xs sm:text-sm text-[#4a5568] leading-relaxed">
-              Index <span className="font-mono text-[#161922]">0</span> is already Jeremy Hernández. Starting at{' '}
-              <span className="font-mono text-[#161922]">-1</span> distinguishes “nobody selected yet” from selecting the first member.
+            <p className="text-xs sm:text-sm text-ink-2 leading-relaxed">
+              Index <span className="font-mono text-ink">0</span> is already Jeremy Hernández. Starting at{' '}
+              <span className="font-mono text-ink">-1</span> distinguishes “nobody selected yet” from selecting the first member.
             </p>
           </div>
         </div>

@@ -36,9 +36,7 @@ function FormattedText({ text, isUser }) {
             <code
               key={i}
               className={`px-1.5 py-0.5 mx-0.5 rounded font-mono text-[11.5px] ${
-                isUser
-                  ? 'bg-white/15 text-white'
-                  : 'bg-[#dfe4ec] text-[#161922]'
+                isUser ? 'bg-black/15 dark:bg-black/25' : 'neu-inset text-ink'
               }`}
             >
               {seg.slice(1, -1)}
@@ -102,9 +100,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
     }
   }, [open])
 
-  useEffect(() => {
-    return () => disconnectAll()
-  }, [])
+  useEffect(() => () => disconnectAll(), [])
 
   useEffect(() => {
     if (open && queuedQuestion) {
@@ -265,7 +261,6 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
 
   const toggleMic = async () => {
     if (micActive) {
-      // Stopping the mic cleanly lets Gemini finish replying if user just spoke
       micRef.current?.stop()
       micRef.current = null
       setMicActive(false)
@@ -316,9 +311,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
 
   const handleVoiceChange = (nextVoice) => {
     setVoiceName(nextVoice)
-    if (liveConnected || micActive) {
-      disconnectAll()
-    }
+    if (liveConnected || micActive) disconnectAll()
   }
 
   const saveLocalKey = (val) => {
@@ -345,7 +338,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
               disconnectAll()
               onClose()
             }}
-            className="fixed inset-0 bg-[#161922]/25 backdrop-blur-xs z-50"
+            className="fixed inset-0 bg-black/35 backdrop-blur-xs z-50"
           />
 
           <motion.aside
@@ -353,13 +346,14 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', stiffness: 360, damping: 36 }}
-            className="fixed top-0 right-0 bottom-0 w-full max-w-[420px] bg-[#e8ecf2] border-l border-white/80 z-50 flex flex-col shadow-2xl"
+            style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border-subtle)' }}
+            className="fixed top-0 right-0 bottom-0 w-full max-w-[420px] border-l z-50 flex flex-col shadow-2xl"
           >
-            {/* Minimal Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#d7dde7]">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b neu-divider">
               <div>
-                <h3 className="text-sm font-semibold text-[#161922]">Voice Tutor</h3>
-                <p className="text-[11px] text-[#647084]">
+                <h3 className="text-sm font-semibold text-ink">Voice Tutor</h3>
+                <p className="text-[11px] text-ink-muted">
                   {connecting ? 'Connecting...' : liveConnected ? 'Connected · Live' : 'Ready'}
                 </p>
               </div>
@@ -369,7 +363,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                   value={voiceName}
                   onChange={(e) => handleVoiceChange(e.target.value)}
                   aria-label="Tutor voice"
-                  className="neu-btn rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-[#161922] focus:outline-none cursor-pointer"
+                  className="neu-btn rounded-lg px-2.5 py-1.5 text-[11px] font-semibold focus:outline-none cursor-pointer"
                 >
                   {VOICES.map((v) => (
                     <option key={v.id} value={v.id}>
@@ -385,7 +379,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                     playerRef.current?.setMuted(next)
                   }}
                   title={speakerMuted ? 'Unmute audio' : 'Mute audio'}
-                  className="neu-btn p-2 rounded-lg text-[#475569] hover:text-[#161922] cursor-pointer"
+                  className="neu-btn p-2 rounded-lg text-ink-2 hover:text-ink cursor-pointer"
                 >
                   {speakerMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
                 </button>
@@ -393,7 +387,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                 <button
                   onClick={clearChat}
                   title="Clear chat"
-                  className="neu-btn p-2 rounded-lg text-[#475569] hover:text-[#161922] cursor-pointer"
+                  className="neu-btn p-2 rounded-lg text-ink-2 hover:text-ink cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -401,7 +395,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                 <button
                   onClick={() => setShowKeyBox((v) => !v)}
                   title="Local API key"
-                  className="neu-btn p-2 rounded-lg text-[#475569] hover:text-[#161922] cursor-pointer"
+                  className="neu-btn p-2 rounded-lg text-ink-2 hover:text-ink cursor-pointer"
                 >
                   <KeyRound className="w-3.5 h-3.5" />
                 </button>
@@ -412,7 +406,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                     onClose()
                   }}
                   title="Close"
-                  className="neu-btn p-2 rounded-lg text-[#475569] hover:text-[#161922] cursor-pointer"
+                  className="neu-btn p-2 rounded-lg text-ink-2 hover:text-ink cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -426,10 +420,10 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden border-b border-[#d7dde7]"
+                  className="overflow-hidden border-b neu-divider"
                 >
                   <div className="p-4 space-y-2">
-                    <div className="text-[11px] font-medium text-[#475569]">
+                    <div className="text-[11px] font-semibold text-ink-muted">
                       Local API Key Override (session only)
                     </div>
                     <input
@@ -437,7 +431,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                       value={localKey}
                       onChange={(e) => saveLocalKey(e.target.value)}
                       placeholder="Paste Gemini API key..."
-                      className="neu-inset w-full rounded-xl px-3 py-2 font-mono text-xs text-[#161922] focus:outline-none"
+                      className="neu-inset w-full rounded-xl px-3 py-2 font-mono text-xs text-ink focus:outline-none"
                     />
                   </div>
                 </motion.div>
@@ -456,8 +450,8 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                   <div
                     className={`max-w-[86%] rounded-2xl px-4 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap ${
                       m.role === 'user'
-                        ? 'bg-[#181b22] text-white rounded-br-sm shadow-md'
-                        : 'neu-card-sm text-[#1e2430] rounded-bl-sm'
+                        ? 'neu-btn-primary rounded-br-sm'
+                        : 'neu-card-sm text-ink rounded-bl-sm'
                     }`}
                   >
                     <FormattedText text={m.text} isUser={m.role === 'user'} />
@@ -466,14 +460,14 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
               ))}
 
               {thinking && (
-                <div className="flex items-center gap-2 text-xs text-[#647084] px-1">
+                <div className="flex items-center gap-2 text-xs text-ink-muted px-1">
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   <span>Thinking...</span>
                 </div>
               )}
 
               {errorMsg && (
-                <div className="p-3 rounded-xl bg-[#fbe9ec] border border-[#f2c6ce] text-xs text-[#9f1239]">
+                <div className="state-err p-3 rounded-xl text-xs">
                   {errorMsg}
                 </div>
               )}
@@ -481,14 +475,14 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
 
             {/* Active Voice / Speaking Strip */}
             {(micActive || modelSpeaking) && (
-              <div className="mx-5 mb-2.5 px-3.5 py-2 rounded-xl neu-inset flex items-center justify-between text-xs text-[#161922]">
+              <div className="mx-5 mb-2.5 px-3.5 py-2 rounded-xl neu-inset flex items-center justify-between text-xs text-ink">
                 <div className="flex items-center gap-2.5">
                   <div className="flex items-end gap-0.5 h-4">
                     {(micActive ? meterLevels : [35, 70, 50, 85, 45]).map((lvl, idx) => (
                       <span
                         key={idx}
-                        style={{ height: `${lvl}%` }}
-                        className="w-[3px] bg-[#181b22] rounded-full transition-all duration-75"
+                        style={{ height: `${lvl}%`, backgroundColor: 'var(--text-primary)' }}
+                        className="w-[3px] rounded-full transition-all duration-75"
                       />
                     ))}
                   </div>
@@ -504,7 +498,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                 {modelSpeaking && (
                   <button
                     onClick={() => playerRef.current?.interrupt()}
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-[#647084] hover:text-[#161922] cursor-pointer"
+                    className="neu-btn inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold cursor-pointer"
                   >
                     <Square className="w-2.5 h-2.5 fill-current" /> Stop
                   </button>
@@ -512,27 +506,27 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
               </div>
             )}
 
-            {/* Minimal Starter Suggestions */}
+            {/* Starter Prompts */}
             <div className="px-5 pb-2.5 flex flex-wrap gap-1.5">
               {STARTER_PROMPTS.map((p) => (
                 <button
                   key={p}
                   onClick={() => sendTextMessage(p)}
                   disabled={connecting}
-                  className="neu-btn px-2.5 py-1 rounded-lg text-[11px] text-[#475569] hover:text-[#161922] disabled:opacity-40 cursor-pointer"
+                  className="neu-btn px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-ink-2 hover:text-ink disabled:opacity-40 cursor-pointer"
                 >
                   {p}
                 </button>
               ))}
             </div>
 
-            {/* Clean Bottom Input + Mic Bar */}
+            {/* Bottom Input + Mic Bar */}
             <form
               onSubmit={(e) => {
                 e.preventDefault()
                 sendTextMessage(input)
               }}
-              className="p-4 border-t border-[#d7dde7] flex items-center gap-2.5"
+              className="p-4 border-t neu-divider flex items-center gap-2.5"
             >
               <button
                 type="button"
@@ -541,8 +535,8 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                 title={micActive ? 'Stop microphone' : 'Speak live'}
                 className={`p-2.5 rounded-xl cursor-pointer transition shrink-0 ${
                   micActive
-                    ? 'bg-[#be123c] text-white shadow-md'
-                    : 'neu-btn text-[#161922]'
+                    ? 'bg-rose-600 text-white border border-rose-500 shadow-md'
+                    : 'neu-btn'
                 }`}
               >
                 {micActive ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
@@ -554,13 +548,13 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Ask a question..."
-                className="neu-inset flex-1 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-[#161922] placeholder:text-[#8793a6] focus:outline-none"
+                className="neu-inset flex-1 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-ink placeholder:text-ink-muted focus:outline-none"
               />
 
               <button
                 type="submit"
                 disabled={connecting || !input.trim()}
-                className="neu-btn-dark p-2.5 rounded-xl disabled:opacity-35 cursor-pointer shrink-0"
+                className="neu-btn-primary p-2.5 rounded-xl disabled:opacity-35 cursor-pointer shrink-0"
               >
                 <Send className="w-4 h-4" />
               </button>

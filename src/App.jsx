@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Mic } from 'lucide-react'
+import { Mic, Moon, Sun } from 'lucide-react'
 import CodeMapModule from './components/CodeMapModule'
 import FileParserLab from './components/FileParserLab'
 import LiveSimulator from './components/LiveSimulator'
@@ -20,6 +20,17 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('code')
   const [tutorOpen, setTutorOpen] = useState(false)
   const [queuedQuestion, setQueuedQuestion] = useState('')
+  const [theme, setTheme] = useState(() => {
+    if (typeof window === 'undefined') return 'light'
+    return localStorage.getItem('csci_theme') || 'light'
+  })
+
+  useEffect(() => {
+    const root = document.documentElement
+    if (theme === 'dark') root.classList.add('dark')
+    else root.classList.remove('dark')
+    localStorage.setItem('csci_theme', theme)
+  }, [theme])
 
   const handleAskTutor = (question) => {
     setQueuedQuestion(question)
@@ -46,25 +57,46 @@ export default function App() {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Minimalist Soft-Neumorphic Header */}
-      <header className="sticky top-0 z-40 bg-[#e8ecf2]/90 backdrop-blur-md border-b border-white/60">
+      <header className="sticky top-0 z-40 neu-header backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex flex-col gap-3.5">
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">
-              <h1 className="text-base sm:text-lg font-semibold tracking-tight text-[#161922] truncate">
+              <h1 className="text-base sm:text-lg font-semibold tracking-tight text-ink truncate">
                 Student Club Member Directory
               </h1>
-              <p className="text-xs text-[#647084] truncate">
+              <p className="text-xs text-ink-muted truncate">
                 CSCI 1380 · Prompt 8 · Jeremy Hernández, Sara Astorga &amp; Felix Martinez
               </p>
             </div>
 
-            <button
-              onClick={() => setTutorOpen(true)}
-              className="neu-btn-dark inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium cursor-pointer shrink-0"
-            >
-              <Mic className="w-3.5 h-3.5" strokeWidth={1.8} />
-              <span>Voice Tutor</span>
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                aria-label="Toggle color theme"
+                className="neu-btn inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium cursor-pointer"
+              >
+                {theme === 'dark' ? (
+                  <>
+                    <Sun className="w-3.5 h-3.5" strokeWidth={1.8} />
+                    <span className="hidden sm:inline">Light</span>
+                  </>
+                ) : (
+                  <>
+                    <Moon className="w-3.5 h-3.5" strokeWidth={1.8} />
+                    <span className="hidden sm:inline">Dark</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => setTutorOpen(true)}
+                className="neu-btn-primary inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                <Mic className="w-3.5 h-3.5" strokeWidth={1.9} />
+                <span>Voice Tutor</span>
+              </button>
+            </div>
           </div>
 
           {/* Recessed Neumorphic Tab Track */}
@@ -81,7 +113,7 @@ export default function App() {
                   role="tab"
                   aria-selected={isActive}
                   className={`relative px-4 py-2 rounded-xl text-xs sm:text-[13px] font-medium whitespace-nowrap transition-colors cursor-pointer ${
-                    isActive ? 'text-[#161922]' : 'text-[#647084] hover:text-[#161922]'
+                    isActive ? 'text-ink font-semibold' : 'text-ink-muted hover:text-ink'
                   }`}
                 >
                   {isActive && (
@@ -92,7 +124,7 @@ export default function App() {
                     />
                   )}
                   <span className="relative z-10 inline-flex items-center gap-2">
-                    <span className="font-mono text-[11px] opacity-55">{idx + 1}</span>
+                    <span className="font-mono text-[11px] opacity-60">{idx + 1}</span>
                     <span>{tab.label}</span>
                   </span>
                 </button>
@@ -121,7 +153,7 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      <footer className="py-6 px-4 text-center text-xs text-[#7a869a]">
+      <footer className="py-6 px-4 text-center text-xs text-ink-muted">
         CSCI 1380 · Prompt 8 · Press 1–5 to switch views
       </footer>
 

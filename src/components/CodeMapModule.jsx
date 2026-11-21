@@ -34,19 +34,19 @@ export default function CodeMapModule({ onAskTutor }) {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-[#161922]">
+          <h2 className="text-2xl font-semibold tracking-tight text-ink">
             Clean Source Walkthrough
           </h2>
-          <p className="text-sm text-[#647084] mt-1 max-w-xl">
-            Select any block of <span className="font-mono text-[#161922]">student_club_directory.py</span> to inspect how it works and how to explain it in class.
+          <p className="text-sm text-ink-muted mt-1 max-w-xl">
+            Click any block of <span className="font-mono text-ink">student_club_directory.py</span> to inspect how it works and how to explain it in class.
           </p>
         </div>
 
         <button
           onClick={handleCopy}
-          className="neu-btn inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium text-[#161922] cursor-pointer self-start sm:self-auto"
+          className="neu-btn inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer self-start sm:self-auto"
         >
-          {copied ? <Check className="w-3.5 h-3.5 text-[#15803d]" /> : <Copy className="w-3.5 h-3.5 text-[#647084]" />}
+          {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5 text-ink-muted" />}
           <span>{copied ? 'Copied' : 'Copy Python'}</span>
         </button>
       </div>
@@ -59,8 +59,8 @@ export default function CodeMapModule({ onAskTutor }) {
             <button
               key={f.id}
               onClick={() => setFilter(f.id)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-medium cursor-pointer transition ${
-                active ? 'neu-inset text-[#161922] font-semibold' : 'neu-btn text-[#647084]'
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer transition ${
+                active ? 'neu-btn-primary' : 'neu-btn text-ink-2'
               }`}
             >
               {f.label}
@@ -71,14 +71,13 @@ export default function CodeMapModule({ onAskTutor }) {
 
       {/* Split View */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Code Well */}
         <div className="lg:col-span-7 code-well rounded-2xl overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06] text-xs text-zinc-400">
-            <span className="font-mono text-zinc-300">student_club_directory.py</span>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.08] text-xs text-zinc-400">
+            <span className="font-mono text-zinc-200">student_club_directory.py</span>
             <span>Click any section</span>
           </div>
 
-          <div className="max-h-[650px] overflow-y-auto py-2 divide-y divide-white/[0.04]">
+          <div className="max-h-[650px] overflow-y-auto py-2 divide-y divide-white/[0.05]">
             {CODE_BLOCKS.map((block, bIdx) => {
               const isSelected = block.id === selectedId
               const isDimmed = filter !== 'all' && block.category !== filter
@@ -90,7 +89,7 @@ export default function CodeMapModule({ onAskTutor }) {
                   key={block.id}
                   onClick={() => setSelectedId(block.id)}
                   className={`relative px-4 py-2.5 cursor-pointer transition-colors ${
-                    isSelected ? 'bg-white/[0.07]' : 'hover:bg-white/[0.03]'
+                    isSelected ? 'bg-white/[0.08]' : 'hover:bg-white/[0.035]'
                   } ${isDimmed ? 'opacity-25' : 'opacity-100'}`}
                 >
                   {isSelected && (
@@ -123,7 +122,7 @@ export default function CodeMapModule({ onAskTutor }) {
           </div>
         </div>
 
-        {/* Minimalist Neumorphic Inspector */}
+        {/* Side Inspector */}
         <div className="lg:col-span-5 lg:sticky lg:top-32">
           <AnimatePresence mode="wait">
             <motion.div
@@ -135,33 +134,33 @@ export default function CodeMapModule({ onAskTutor }) {
               className="neu-card rounded-2xl p-6 space-y-5"
             >
               <div className="space-y-1.5">
-                <span className="inline-block px-2.5 py-1 rounded-lg neu-inset text-[11px] font-medium text-[#475569]">
+                <span className="inline-block px-2.5 py-1 rounded-lg neu-inset text-[11px] font-semibold text-ink-2">
                   {selectedBlock.badge}
                 </span>
-                <h3 className="text-lg font-semibold text-[#161922] font-mono pt-1">
+                <h3 className="text-lg font-semibold text-ink font-mono pt-1">
                   {selectedBlock.title}
                 </h3>
               </div>
 
               <div className="space-y-1.5">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#7a869a]">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
                   What it does
                 </div>
-                <p className="text-sm text-[#2c3340] leading-relaxed">{selectedBlock.what}</p>
+                <p className="text-sm text-ink-2 leading-relaxed">{selectedBlock.what}</p>
               </div>
 
-              <div className="pt-4 border-t border-[#d7dde7] space-y-1.5">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#7a869a]">
+              <div className="pt-4 border-t neu-divider space-y-1.5">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
                   Design rationale
                 </div>
-                <p className="text-sm text-[#4a5568] leading-relaxed">{selectedBlock.why}</p>
+                <p className="text-sm text-ink-2 leading-relaxed">{selectedBlock.why}</p>
               </div>
 
-              <div className="pt-4 border-t border-[#d7dde7] space-y-2">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#7a869a]">
+              <div className="pt-4 border-t neu-divider space-y-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
                   How to explain it
                 </div>
-                <div className="neu-inset rounded-xl p-4 text-sm text-[#1e2430] leading-relaxed">
+                <div className="neu-inset rounded-xl p-4 text-sm text-ink leading-relaxed">
                   “{selectedBlock.script}”
                 </div>
               </div>
@@ -173,9 +172,9 @@ export default function CodeMapModule({ onAskTutor }) {
                       `Explain "${selectedBlock.title}" simply and give me one quick question the professor might ask.`
                     )
                   }
-                  className="neu-btn w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-medium text-[#161922] cursor-pointer"
+                  className="neu-btn w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold cursor-pointer"
                 >
-                  <Mic className="w-3.5 h-3.5 text-[#475569]" strokeWidth={1.8} />
+                  <Mic className="w-3.5 h-3.5 text-ink-muted" strokeWidth={1.8} />
                   <span>Ask Voice Tutor about this section</span>
                 </button>
               )}
