@@ -3,8 +3,8 @@ const MODEL_CHAIN = ['gemini-flash-lite-latest', 'gemini-3.5-flash-lite', 'gemin
 const SYSTEM_INSTRUCTION = `You are a friendly, concise CSCI 1380 Python study tutor helping three students (Jeremy Hernández, Sara Astorga, and Felix Martinez) understand and present their Final Project Prompt #8: "Student Club Member Directory".
 
 Rules:
-- Explain things in clear, simple, natural English (or Spanish if the student speaks Spanish).
-- Keep answers short and crisp (2-5 sentences) so they sound great when spoken aloud.
+- Explain things in clear, simple, natural English (or Spanish if the student speaks/writes Spanish).
+- Keep answers short and crisp (2-4 sentences) so they sound great when spoken aloud.
 - Stick strictly to basic Python they learned in CSCI 1380 (lists, while, for, if/elif/else, functions, open/read/write/close, replace, split, string slicing [0:6] and [6:]). Never suggest advanced Python like try/except, list comprehensions, classes, or lambdas.
 - If the student asks to be quizzed or to practice presenting, act like a supportive CSCI 1380 professor: ask ONE focused question about their code and give brief, encouraging feedback on their answer.
 - Base every answer strictly on their exact code below:
@@ -75,41 +75,83 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { message, history = [] } = req.body || {}
-    if (!message || typeof message !== 'string') {
-      return res.status(400).json({ error: 'Missing message.' })
+    const { message, audioBase64, audioMimeType, history = [] } = req.body || {}
+    const isAudio = Boolean(audioBase64)
+
+    if (!isAudio && (!message || typeof message !== 'string')) {
+      return res.status(400).json({ error: 'Missing message or audio.' })
     }
+
+    const userParts = isAudio
+      ? [
+          {
+            inlineData: {
+              mimeType: (audioMimeType || 'audio/webm').split(';')[0],
+              data: audioBase64,
+            },
+          },
+          {
+            text: 'Listen to the student speaking. Return ONLY valid JSON with two keys: "transcript" (exact words the student spoke) and "reply" (your helpful 2-4 sentence tutor answer in the same language they spoke). If the audio is silent or unclear, set transcript to "(unclear audio)" and reply politely asking them to try again.',
+          },
+        ]
+      : [{ text: message }]
 
     const contents = [
       ...history.slice(-10).map((h) => ({
         role: h.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: h.text }],
       })),
-      { role: 'user', parts: [{ text: message }] },
+      { role: 'user', parts: userParts },
     ]
 
     let lastError = 'Gemini API unavailable.'
 
     for (const model of MODEL_CHAIN) {
+      const generationConfig = {
+        temperature: 0.4,
+        maxOutputTokens: 420,
+        ...(isAudio ? { responseMimeType: 'application/json' } : {}),
+      }
+
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(
+          apiKey
+        )}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
             contents,
-            generationConfig: { temperature: 0.4, maxOutputTokens: 360 },
+            generationConfig,
           }),
         }
       )
 
       const data = await response.json()
       if (response.ok) {
-        const reply =
+        const rawText =
           data?.candidates?.[0]?.content?.parts?.[0]?.text ||
           'Sorry, I could not generate a response. Please try asking again.'
-        return res.status(200).json({ reply, model })
+
+        if (isAudio) {
+          try {
+            const parsed = JSON.parse(rawText)
+            return res.status(200).json({
+              transcript: parsed.transcript || '(voice question)',
+              reply: parsed.reply || rawText,
+              model,
+            })
+          } catch {
+            return res.status(200).json({
+              transcript: '(voice message)',
+              reply: rawText,
+              model,
+            })
+          }
+        }
+
+        return res.status(200).json({ reply: rawText, model })
       }
       lastError = data?.error?.message || `HTTP ${response.status}`
     }
