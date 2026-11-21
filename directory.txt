@@ -1,0 +1,5 @@
+Name: Jeremy Hernández | Role: President
+Name: Sara Astorga | Role: Vice President
+Name: Felix Martinez | Role: Treasurer
+Name: Juan Martinez | Role: Member
+Name: Luis Barrera | Role: Member
