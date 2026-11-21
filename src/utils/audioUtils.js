@@ -50,3 +50,27 @@ export function pcmBase64ToWavUrl(base64Pcm, sampleRate = 24000) {
   const blob = new Blob([buffer], { type: 'audio/wav' })
   return URL.createObjectURL(blob)
 }
+
+export function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      const result = String(reader.result || '')
+      const comma = result.indexOf(',')
+      resolve(comma >= 0 ? result.slice(comma + 1) : result)
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+}
+
+export function pickSupportedAudioMime() {
+  if (typeof MediaRecorder === 'undefined') return ''
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4',
+    'audio/ogg;codecs=opus',
+  ]
+  return candidates.find((m) => MediaRecorder.isTypeSupported(m)) || ''
+}

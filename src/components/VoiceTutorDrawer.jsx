@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Mic, MicOff, Volume2, VolumeX, Send, X, KeyRound, Loader2, Square, Trash2
+  Mic, Volume2, VolumeX, Send, X, KeyRound, Loader2, Square, Trash2, Check
 } from 'lucide-react'
 import { getCleanCodeString } from '../data/projectData'
-import { GeminiLiveClient, MicPcmStreamer, PcmStreamPlayer } from '../utils/liveAudioEngine'
+import { GeminiLiveClient, PcmStreamPlayer } from '../utils/liveAudioEngine'
+import { blobToBase64, pickSupportedAudioMime } from '../utils/audioUtils'
+
+const TRANSCRIBE_MODELS = ['gemini-flash-lite-latest', 'gemini-3.5-flash-lite', 'gemini-3.5-flash']
 
 const VOICES = [
   { id: 'Kore', label: 'Kore' },
@@ -59,7 +62,7 @@ function FormattedText({ text, isUser }) {
 const WELCOME_MSG = {
   id: 1,
   role: 'assistant',
-  text: 'Ask anything about your Student Club Member Directory code. Tap the microphone below to speak live, or type a question.',
+  text: 'Ask anything about your Student Club Member Directory code. Tap the microphone below to speak, or type a question.',
 }
 
 export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClearQueued }) {
@@ -69,8 +72,8 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
   const [speakerMuted, setSpeakerMuted] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [liveConnected, setLiveConnected] = useState(false)
-  const [micActive, setMicActive] = useState(false)
-  const [userSpeaking, setUserSpeaking] = useState(false)
+  const [recording, setRecording] = useState(false)
+  const [recordSeconds, setRecordSeconds] = useState(0)
   const [modelSpeaking, setModelSpeaking] = useState(false)
   const [thinking, setThinking] = useState(false)
   const [meterLevels, setMeterLevels] = useState([18, 22, 26, 22, 18, 22, 18])
@@ -80,8 +83,13 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
 
   const liveClientRef = useRef(null)
   const playerRef = useRef(null)
-  const micRef = useRef(null)
-  const activeUserMsgIdRef = useRef(null)
+  const mediaRecorderRef = useRef(null)
+  const audioStreamRef = useRef(null)
+  const chunksRef = useRef([])
+  const cancelRecRef = useRef(false)
+  const meterCtxRef = useRef(null)
+  const rafRef = useRef(null)
+  const timerRef = useRef(null)
   const activeModelMsgIdRef = useRef(null)
   const scrollRef = useRef(null)
   const inputRef = useRef(null)
@@ -90,17 +98,24 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages, thinking, micActive])
+  }, [messages, thinking, recording])
 
   useEffect(() => {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 200)
     } else {
+      cleanupRecording(true)
       disconnectAll()
     }
   }, [open])
 
-  useEffect(() => () => disconnectAll(), [])
+  useEffect(
+    () => () => {
+      cleanupRecording(true)
+      disconnectAll()
+    },
+    []
+  )
 
   useEffect(() => {
     if (open && queuedQuestion) {
@@ -122,12 +137,33 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
     return playerRef.current
   }
 
-  const disconnectAll = () => {
-    micRef.current?.stop()
-    micRef.current = null
-    setMicActive(false)
-    setUserSpeaking(false)
+  const cleanupRecording = (cancel = false) => {
+    cancelRecRef.current = cancel
+    if (timerRef.current) {
+      clearInterval(timerRef.current)
+      timerRef.current = null
+    }
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+    if (meterCtxRef.current) {
+      meterCtxRef.current.close().catch(() => {})
+      meterCtxRef.current = null
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop()
+    }
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach((t) => t.stop())
+      audioStreamRef.current = null
+    }
+    setRecording(false)
+    setRecordSeconds(0)
+    setMeterLevels([18, 22, 26, 22, 18, 22, 18])
+  }
 
+  const disconnectAll = () => {
     liveClientRef.current?.close()
     liveClientRef.current = null
     setLiveConnected(false)
@@ -138,7 +174,6 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
     playerRef.current = null
     setModelSpeaking(false)
 
-    activeUserMsgIdRef.current = null
     activeModelMsgIdRef.current = null
   }
 
@@ -157,28 +192,9 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
         setLiveConnected(true)
         setConnecting(false)
       },
-      onUserTranscript: (chunk) => {
-        if (!chunk) return
-        activeModelMsgIdRef.current = null
-        if (!activeUserMsgIdRef.current) {
-          const newId = Date.now() + Math.random()
-          activeUserMsgIdRef.current = newId
-          setMessages((prev) =>
-            prev.some((m) => m.id === newId)
-              ? prev
-              : [...prev, { id: newId, role: 'user', text: chunk.trimStart() }]
-          )
-        } else {
-          const targetId = activeUserMsgIdRef.current
-          setMessages((prev) =>
-            prev.map((m) => (m.id === targetId ? { ...m, text: m.text + chunk } : m))
-          )
-        }
-      },
       onModelTranscript: (chunk) => {
         if (!chunk) return
         setThinking(false)
-        activeUserMsgIdRef.current = null
         if (!activeModelMsgIdRef.current) {
           const newId = Date.now() + Math.random()
           activeModelMsgIdRef.current = newId
@@ -205,7 +221,6 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
       },
       onTurnComplete: () => {
         setThinking(false)
-        activeUserMsgIdRef.current = null
         activeModelMsgIdRef.current = null
       },
       onError: (msg) => {
@@ -217,9 +232,6 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
         setLiveConnected(false)
         setConnecting(false)
         setThinking(false)
-        micRef.current?.stop()
-        micRef.current = null
-        setMicActive(false)
         liveClientRef.current = null
       },
     })
@@ -238,48 +250,170 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
     }
   }
 
-  const createMicStreamer = () =>
-    new MicPcmStreamer({
-      onChunk: (b64) => {
-        if (liveClientRef.current?.ready) {
-          liveClientRef.current.sendPcmAudio(b64)
-        }
-      },
-      onSpeechEnd: () => {
-        if (liveClientRef.current?.ready) {
-          setThinking(true)
-          setTimeout(() => {
-            setThinking((t) => (t ? false : t))
-          }, 4500)
-        }
-      },
-      onUserSpeakingChange: (speaking) => {
-        setUserSpeaking(speaking)
-      },
-      onLevels: (bars) => setMeterLevels(bars),
-    })
+  // Transcribe recorded voice blob accurately via /api/transcribe (or direct Gemini locally)
+  const transcribeAudioBlob = async (blob, mimeType) => {
+    const audioBase64 = await blobToBase64(blob)
+    const directKey = getDirectKey()
 
-  const toggleMic = async () => {
-    if (micActive) {
-      micRef.current?.stop()
-      micRef.current = null
-      setMicActive(false)
-      setUserSpeaking(false)
+    if (!directKey) {
+      const res = await fetch('/api/transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audioBase64, audioMimeType: mimeType || 'audio/webm' }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'Could not transcribe voice.')
+      return (data.transcript || '').trim()
+    }
+
+    const cleanMime = String(mimeType || 'audio/webm').split(';')[0]
+    let lastErr = 'Could not transcribe voice.'
+    for (const model of TRANSCRIBE_MODELS) {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(
+          directKey
+        )}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  { inlineData: { mimeType: cleanMime, data: audioBase64 } },
+                  {
+                    text: 'Transcribe exactly what the speaker said (in English or Spanish). Return ONLY the spoken words with normal punctuation and nothing else. If silent or unintelligible, return an empty string.',
+                  },
+                ],
+              },
+            ],
+            generationConfig: { temperature: 0, maxOutputTokens: 160 },
+          }),
+        }
+      )
+      const data = await res.json()
+      if (res.ok) {
+        return (data?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim()
+      }
+      lastErr = data?.error?.message || `HTTP ${res.status}`
+    }
+    throw new Error(lastErr)
+  }
+
+  const handleRecordedVoice = async (blob, mimeType) => {
+    setErrorMsg('')
+    playerRef.current?.interrupt()
+    activeModelMsgIdRef.current = null
+
+    const placeholderId = Date.now() + Math.random()
+    setMessages((prev) => [
+      ...prev,
+      { id: placeholderId, role: 'user', text: 'Listening to your voice...' },
+    ])
+    setThinking(true)
+
+    try {
+      // Transcribe audio AND ensure Gemini 3.8 Live is ready in parallel for fastest response
+      const [transcript, client] = await Promise.all([
+        transcribeAudioBlob(blob, mimeType),
+        ensureLiveSession(),
+      ])
+
+      if (!transcript) {
+        setMessages((prev) => prev.filter((m) => m.id !== placeholderId))
+        setThinking(false)
+        setErrorMsg('No speech detected—tap the mic, speak clearly, then tap Send.')
+        return
+      }
+
+      setMessages((prev) =>
+        prev.map((m) => (m.id === placeholderId ? { ...m, text: transcript } : m))
+      )
+      client.sendText(transcript)
+    } catch (err) {
+      setMessages((prev) => prev.filter((m) => m.id !== placeholderId))
+      setThinking(false)
+      setErrorMsg(err.message || 'Could not process voice message.')
+    }
+  }
+
+  const startRecording = async () => {
+    if (connecting || thinking) return
+    setErrorMsg('')
+    ensurePlayer()
+    playerRef.current?.interrupt()
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setErrorMsg('Microphone recording requires HTTPS and a modern browser.')
       return
     }
 
-    setErrorMsg('')
     try {
-      ensurePlayer()
-      const mic = createMicStreamer()
-      await mic.start()
-      micRef.current = mic
-      setMicActive(true)
-      await ensureLiveSession()
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      audioStreamRef.current = stream
+      chunksRef.current = []
+      cancelRecRef.current = false
+
+      const mime = pickSupportedAudioMime()
+      const recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream)
+      mediaRecorderRef.current = recorder
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunksRef.current.push(e.data)
+      }
+
+      recorder.onstop = () => {
+        const wasCanceled = cancelRecRef.current
+        const chunks = chunksRef.current
+        const finalMime = recorder.mimeType || mime || 'audio/webm'
+        if (!wasCanceled && chunks.length > 0) {
+          const blob = new Blob(chunks, { type: finalMime })
+          if (blob.size > 600) {
+            handleRecordedVoice(blob, finalMime)
+          } else {
+            setErrorMsg('Recording was too short—speak your question and tap Send.')
+          }
+        }
+      }
+
+      // Live 7-bar mic volume meter
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext
+        const ctx = new AudioCtx()
+        meterCtxRef.current = ctx
+        const src = ctx.createMediaStreamSource(stream)
+        const analyser = ctx.createAnalyser()
+        analyser.fftSize = 64
+        src.connect(analyser)
+        const freq = new Uint8Array(analyser.frequencyBinCount)
+
+        const tick = () => {
+          analyser.getByteFrequencyData(freq)
+          const bars = [1, 3, 5, 7, 9, 11, 13].map((i) =>
+            Math.max(16, Math.min(100, Math.round((freq[i] / 255) * 100)))
+          )
+          setMeterLevels(bars)
+          rafRef.current = requestAnimationFrame(tick)
+        }
+        tick()
+      } catch {
+        // optional visual meter
+      }
+
+      recorder.start()
+      setRecording(true)
+      setRecordSeconds(0)
+      timerRef.current = setInterval(() => {
+        setRecordSeconds((s) => {
+          if (s >= 29) {
+            cleanupRecording(false)
+            return 30
+          }
+          return s + 1
+        })
+      }, 1000)
     } catch (err) {
-      micRef.current?.stop()
-      micRef.current = null
-      setMicActive(false)
       if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
         setErrorMsg('Microphone permission is blocked. Allow microphone access in your browser address bar.')
       } else {
@@ -293,8 +427,8 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
     if (!trimmed || connecting) return
 
     setErrorMsg('')
+    ensurePlayer()
     playerRef.current?.interrupt()
-    activeUserMsgIdRef.current = null
     activeModelMsgIdRef.current = null
 
     setMessages((prev) => [...prev, { id: Date.now() + Math.random(), role: 'user', text: trimmed }])
@@ -311,7 +445,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
 
   const handleVoiceChange = (nextVoice) => {
     setVoiceName(nextVoice)
-    if (liveConnected || micActive) disconnectAll()
+    if (liveConnected) disconnectAll()
   }
 
   const saveLocalKey = (val) => {
@@ -321,10 +455,13 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
   }
 
   const clearChat = () => {
+    cleanupRecording(true)
     disconnectAll()
     setErrorMsg('')
     setMessages([WELCOME_MSG])
   }
+
+  const formatTimer = (sec) => `0:${String(sec).padStart(2, '0')}`
 
   return (
     <AnimatePresence>
@@ -335,6 +472,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => {
+              cleanupRecording(true)
               disconnectAll()
               onClose()
             }}
@@ -346,7 +484,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', stiffness: 360, damping: 36 }}
-            style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--border-subtle)' }}
+            style={{ backgroundColor: 'var(--bg)', borderColor: 'var(--divider)' }}
             className="fixed top-0 right-0 bottom-0 w-full max-w-[420px] border-l z-50 flex flex-col shadow-2xl"
           >
             {/* Header */}
@@ -354,7 +492,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
               <div>
                 <h3 className="text-sm font-semibold text-ink">Voice Tutor</h3>
                 <p className="text-[11px] text-ink-muted">
-                  {connecting ? 'Connecting...' : liveConnected ? 'Connected · Live' : 'Ready'}
+                  {connecting ? 'Connecting...' : liveConnected ? 'Connected · Live Voice' : 'Ready'}
                 </p>
               </div>
 
@@ -402,6 +540,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
 
                 <button
                   onClick={() => {
+                    cleanupRecording(true)
                     disconnectAll()
                     onClose()
                   }}
@@ -473,36 +612,30 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
               )}
             </div>
 
-            {/* Active Voice / Speaking Strip */}
-            {(micActive || modelSpeaking) && (
+            {/* Speaking Strip */}
+            {modelSpeaking && !recording && (
               <div className="mx-5 mb-2.5 px-3.5 py-2 rounded-xl neu-inset flex items-center justify-between text-xs text-ink">
                 <div className="flex items-center gap-2.5">
-                  <div className="flex items-end gap-0.5 h-4">
-                    {(micActive ? meterLevels : [35, 70, 50, 85, 45]).map((lvl, idx) => (
-                      <span
-                        key={idx}
-                        style={{ height: `${lvl}%`, backgroundColor: 'var(--text-primary)' }}
-                        className="w-[3px] rounded-full transition-all duration-75"
+                  <div className="flex items-end gap-0.5 h-3.5">
+                    {[0, 1, 2, 3, 4].map((bar) => (
+                      <motion.span
+                        key={bar}
+                        animate={{ height: ['25%', '100%', '35%'] }}
+                        transition={{ repeat: Infinity, duration: 0.5, delay: bar * 0.08 }}
+                        style={{ backgroundColor: 'var(--text-primary)' }}
+                        className="w-[3px] rounded-full"
                       />
                     ))}
                   </div>
-                  <span className="font-medium text-[12px]">
-                    {userSpeaking
-                      ? 'Listening...'
-                      : modelSpeaking
-                      ? `Speaking (${voiceName})`
-                      : 'Mic active — speak now'}
-                  </span>
+                  <span className="font-medium text-[12px]">Speaking ({voiceName})</span>
                 </div>
 
-                {modelSpeaking && (
-                  <button
-                    onClick={() => playerRef.current?.interrupt()}
-                    className="neu-btn inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold cursor-pointer"
-                  >
-                    <Square className="w-2.5 h-2.5 fill-current" /> Stop
-                  </button>
-                )}
+                <button
+                  onClick={() => playerRef.current?.interrupt()}
+                  className="neu-btn inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold cursor-pointer"
+                >
+                  <Square className="w-2.5 h-2.5 fill-current" /> Stop
+                </button>
               </div>
             )}
 
@@ -512,7 +645,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                 <button
                   key={p}
                   onClick={() => sendTextMessage(p)}
-                  disabled={connecting}
+                  disabled={connecting || recording}
                   className="neu-btn px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-ink-2 hover:text-ink disabled:opacity-40 cursor-pointer"
                 >
                   {p}
@@ -520,45 +653,78 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
               ))}
             </div>
 
-            {/* Bottom Input + Mic Bar */}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault()
-                sendTextMessage(input)
-              }}
-              className="p-4 border-t neu-divider flex items-center gap-2.5"
-            >
-              <button
-                type="button"
-                onClick={toggleMic}
-                disabled={connecting}
-                title={micActive ? 'Stop microphone' : 'Speak live'}
-                className={`p-2.5 rounded-xl cursor-pointer transition shrink-0 ${
-                  micActive
-                    ? 'bg-rose-600 text-white border border-rose-500 shadow-md'
-                    : 'neu-btn'
-                }`}
-              >
-                {micActive ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-              </button>
+            {/* Bottom Input Bar OR Active Recording Bar */}
+            {recording ? (
+              <div className="p-4 border-t neu-divider flex items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse shrink-0" />
+                  <span className="font-mono text-xs font-semibold text-ink">
+                    {formatTimer(recordSeconds)}
+                  </span>
+                  <div className="flex items-end gap-0.5 h-5">
+                    {meterLevels.map((lvl, idx) => (
+                      <span
+                        key={idx}
+                        style={{ height: `${lvl}%` }}
+                        className="w-[3px] bg-rose-500 rounded-full transition-all duration-75"
+                      />
+                    ))}
+                  </div>
+                </div>
 
-              <input
-                ref={inputRef}
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask a question..."
-                className="neu-inset flex-1 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-ink placeholder:text-ink-muted focus:outline-none"
-              />
-
-              <button
-                type="submit"
-                disabled={connecting || !input.trim()}
-                className="neu-btn-primary p-2.5 rounded-xl disabled:opacity-35 cursor-pointer shrink-0"
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => cleanupRecording(true)}
+                    className="neu-btn px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => cleanupRecording(false)}
+                    className="neu-btn-primary inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer"
+                  >
+                    <Check className="w-3.5 h-3.5" /> Send
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  sendTextMessage(input)
+                }}
+                className="p-4 border-t neu-divider flex items-center gap-2.5"
               >
-                <Send className="w-4 h-4" />
-              </button>
-            </form>
+                <button
+                  type="button"
+                  onClick={startRecording}
+                  disabled={connecting || thinking}
+                  title="Record your voice question"
+                  className="neu-btn p-2.5 rounded-xl disabled:opacity-40 cursor-pointer shrink-0"
+                >
+                  <Mic className="w-4 h-4" />
+                </button>
+
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Ask a question..."
+                  className="neu-inset flex-1 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-ink placeholder:text-ink-muted focus:outline-none"
+                />
+
+                <button
+                  type="submit"
+                  disabled={connecting || !input.trim()}
+                  className="neu-btn-primary p-2.5 rounded-xl disabled:opacity-35 cursor-pointer shrink-0"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </form>
+            )}
           </motion.aside>
         </>
       )}
