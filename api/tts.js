@@ -1,4 +1,5 @@
 const ALLOWED_VOICES = new Set(['Kore', 'Puck', 'Zephyr', 'Fenrir', 'Aoede', 'Charon'])
+const TTS_MODELS = ['gemini-3.8-flash-lite-tts', 'gemini-3.8-flash-tts', 'gemini-2.5-flash-preview-tts']
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -24,53 +25,50 @@ export default async function handler(req, res) {
       .trim()
       .slice(0, 900)
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${encodeURIComponent(
-        apiKey
-      )}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: `Read the following friendly tutoring explanation naturally and clearly:\n\n${cleanText}`,
+    let lastErr = 'TTS API error'
+
+    for (const model of TTS_MODELS) {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(
+          apiKey
+        )}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: cleanText }] }],
+            generationConfig: {
+              responseModalities: ['AUDIO'],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName },
                 },
-              ],
-            },
-          ],
-          generationConfig: {
-            responseModalities: ['AUDIO'],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: { voiceName },
               },
             },
-          },
-        }),
+          }),
+        }
+      )
+
+      const data = await response.json()
+      if (response.ok) {
+        const inline = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData
+        if (inline?.data) {
+          const mimeType = inline.mimeType || 'audio/wav'
+          const rateMatch = String(mimeType).match(/rate=(\d+)/)
+          const sampleRate = rateMatch ? Number(rateMatch[1]) : 24000
+          return res.status(200).json({
+            audioBase64: inline.data,
+            mimeType,
+            sampleRate,
+            voice: voiceName,
+            model,
+          })
+        }
       }
-    )
-
-    const data = await response.json()
-    if (!response.ok) {
-      return res.status(response.status).json({ error: data?.error?.message || 'TTS API error' })
+      lastErr = data?.error?.message || `HTTP ${response.status}`
     }
 
-    const inline = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData
-    if (!inline?.data) {
-      return res.status(502).json({ error: 'No audio returned from Gemini TTS.' })
-    }
-
-    const rateMatch = String(inline.mimeType || '').match(/rate=(\d+)/)
-    const sampleRate = rateMatch ? Number(rateMatch[1]) : 24000
-
-    return res.status(200).json({
-      audioBase64: inline.data,
-      sampleRate,
-      voice: voiceName,
-    })
+    return res.status(502).json({ error: lastErr })
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Unexpected TTS server error' })
   }

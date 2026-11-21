@@ -6,7 +6,7 @@ import {
   ListPlus, Volume2, VolumeX, Loader2, Square
 } from 'lucide-react'
 import { INITIAL_MEMBERS } from '../data/projectData'
-import { getGeminiTtsUrl } from '../utils/ttsClient'
+import { getGeminiTtsUrl, prefetchGeminiTts } from '../utils/ttsClient'
 
 const STEPS = [
   { id: 0, label: '1. readlines()', code: 'for line in saved_lines:' },
@@ -98,6 +98,10 @@ export default function FileParserLab() {
 
     try {
       const script = getStepNarration(targetStep, parsedInfo)
+      // Preload next step in background so transitions have 0ms wait
+      if (targetStep + 1 < STEPS.length) {
+        prefetchGeminiTts(getStepNarration(targetStep + 1, parsedInfo), 'Kore')
+      }
       const wavUrl = await getGeminiTtsUrl(script, 'Kore')
       if (token !== activeTokenRef.current) return
 

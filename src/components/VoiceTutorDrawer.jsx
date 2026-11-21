@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Mic, Volume2, VolumeX, Send, X, KeyRound, MessageSquare,
-  Loader2, Square, Trash2, GraduationCap, Radio, Check
+  Mic, MicOff, Volume2, VolumeX, Send, X, KeyRound, MessageSquare,
+  Loader2, Square, Trash2, GraduationCap, PhoneCall, PhoneOff, Radio
 } from 'lucide-react'
 import { getCleanCodeString } from '../data/projectData'
-import { blobToBase64, pcmBase64ToWavUrl, pickSupportedAudioMime } from '../utils/audioUtils'
-
-const MODEL_CHAIN = ['gemini-flash-lite-latest', 'gemini-3.5-flash-lite', 'gemini-3.5-flash']
+import { GeminiLiveClient, MicPcmStreamer, PcmStreamPlayer } from '../utils/liveAudioEngine'
 
 const VOICES = [
   { id: 'Kore', label: 'Kore (Warm)' },
@@ -23,11 +21,11 @@ const STARTER_PROMPTS = [
   'Void vs value-returning functions in our code',
 ]
 
-const CLIENT_SYSTEM_PROMPT = `You are a friendly, concise CSCI 1380 Python study tutor helping Jeremy Hernández, Sara Astorga, and Felix Martinez understand and present their Final Project Prompt #8 ("Student Club Member Directory").
-- Keep answers short (2 to 4 sentences), clear, and natural so they sound great when spoken aloud.
-- Reply in English by default, or Spanish if the student speaks/writes in Spanish.
-- Stick strictly to basic Python they learned (lists, while, for, if/elif/else, functions, open/read/write/close, replace, split, [0:6] and [6:]). Never suggest try/except, lambdas, classes, or list comprehensions.
-- If asked to quiz them like a professor, ask ONE focused question and give encouraging feedback when they answer.
+const LIVE_SYSTEM_INSTRUCTION = `You are a friendly, fast CSCI 1380 Python voice tutor helping Jeremy Hernández, Sara Astorga, and Felix Martinez understand and present their Final Project Prompt #8 ("Student Club Member Directory").
+- Keep spoken answers natural, warm, and short (2 to 4 sentences).
+- Reply in English by default, or Spanish if the student speaks or writes in Spanish.
+- Stick strictly to basic Python from CSCI 1380 (lists, while, for, if/elif/else, functions, open/read/write/close, replace, split, string slicing [0:6] and [6:]). Never suggest try/except, lambdas, classes, or list comprehensions.
+- When acting as a mock CSCI 1380 professor, ask ONE short presentation question and wait for their answer, then give quick encouraging feedback.
 Here is their exact code:
 ${getCleanCodeString()}`
 
@@ -62,33 +60,30 @@ function FormattedText({ text }) {
 const WELCOME_MSG = {
   id: 1,
   role: 'assistant',
-  text: 'Ready to study! Tap the microphone to speak naturally (works in Opera GX, Chrome, Safari & mobile), or click **Mock Professor** to practice answering presentation questions out loud.',
+  text: 'Powered by **Gemini 3.8 Live**! Tap **Start Live Voice** to talk in real time like a phone call—no waiting for audio to load—or type any question below.',
 }
 
 export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClearQueued }) {
   const [messages, setMessages] = useState([WELCOME_MSG])
   const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [recording, setRecording] = useState(false)
-  const [recordSeconds, setRecordSeconds] = useState(0)
-  const [meterLevels, setMeterLevels] = useState([20, 25, 30, 25, 20, 25, 20])
   const [voiceName, setVoiceName] = useState('Kore')
-  const [autoSpeak, setAutoSpeak] = useState(true)
-  const [ttsLoadingId, setTtsLoadingId] = useState(null)
-  const [playingId, setPlayingId] = useState(null)
+  const [speakerMuted, setSpeakerMuted] = useState(false)
+  const [connecting, setConnecting] = useState(false)
+  const [liveConnected, setLiveConnected] = useState(false)
+  const [micActive, setMicActive] = useState(false)
+  const [micMuted, setMicMuted] = useState(false)
+  const [modelSpeaking, setModelSpeaking] = useState(false)
+  const [thinking, setThinking] = useState(false)
+  const [meterLevels, setMeterLevels] = useState([18, 22, 26, 22, 18, 22, 18])
   const [showKeyBox, setShowKeyBox] = useState(false)
   const [localKey, setLocalKey] = useState(() => sessionStorage.getItem('gemini_tutor_key') || '')
   const [errorMsg, setErrorMsg] = useState('')
 
-  const mediaRecorderRef = useRef(null)
-  const audioStreamRef = useRef(null)
-  const chunksRef = useRef([])
-  const cancelRecordingRef = useRef(false)
-  const audioCtxRef = useRef(null)
-  const rafRef = useRef(null)
-  const timerRef = useRef(null)
-  const audioElRef = useRef(null)
-  const audioCacheRef = useRef(new Map())
+  const liveClientRef = useRef(null)
+  const playerRef = useRef(null)
+  const micRef = useRef(null)
+  const activeUserMsgIdRef = useRef(null)
+  const activeModelMsgIdRef = useRef(null)
   const scrollRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -96,23 +91,18 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages, loading, recording])
+  }, [messages, thinking, micActive])
 
   useEffect(() => {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 220)
     } else {
-      cleanupRecording(true)
-      stopAudio()
+      disconnectAll()
     }
   }, [open])
 
   useEffect(() => {
-    return () => {
-      cleanupRecording(true)
-      stopAudio()
-      audioCacheRef.current.forEach((url) => URL.revokeObjectURL(url))
-    }
+    return () => disconnectAll()
   }, [])
 
   useEffect(() => {
@@ -122,391 +112,203 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
     }
   }, [open, queuedQuestion])
 
-  const getActiveLocalKey = () => localKey.trim() || import.meta.env.VITE_GEMINI_API_KEY || ''
+  const getDirectKey = () => localKey.trim() || import.meta.env.VITE_GEMINI_API_KEY || ''
 
-  const stopAudio = () => {
-    if (audioElRef.current) {
-      audioElRef.current.pause()
-      audioElRef.current.currentTime = 0
-      audioElRef.current = null
-    }
-    setPlayingId(null)
-    setTtsLoadingId(null)
-  }
-
-  const cleanupRecording = (cancel = false) => {
-    cancelRecordingRef.current = cancel
-    if (timerRef.current) {
-      clearInterval(timerRef.current)
-      timerRef.current = null
-    }
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current)
-      rafRef.current = null
-    }
-    if (audioCtxRef.current) {
-      audioCtxRef.current.close().catch(() => {})
-      audioCtxRef.current = null
-    }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop()
-    }
-    if (audioStreamRef.current) {
-      audioStreamRef.current.getTracks().forEach((t) => t.stop())
-      audioStreamRef.current = null
-    }
-    setRecording(false)
-    setRecordSeconds(0)
-    setMeterLevels([20, 25, 30, 25, 20, 25, 20])
-  }
-
-  // ---- Gemini Neural TTS (Studio Human Voice) ----
-  const fetchNeuralAudioUrl = async (text, chosenVoice) => {
-    const cleanText = text
-      .replace(/```[\s\S]*?```/g, ' ')
-      .replace(/[`*_#]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 900)
-
-    const directKey = getActiveLocalKey()
-
-    if (!directKey) {
-      const res = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: cleanText, voice: chosenVoice }),
+  const ensurePlayer = () => {
+    if (!playerRef.current) {
+      playerRef.current = new PcmStreamPlayer((playing) => {
+        setModelSpeaking(playing)
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || 'TTS failed')
-      return pcmBase64ToWavUrl(data.audioBase64, data.sampleRate || 24000)
     }
-
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${encodeURIComponent(
-        directKey
-      )}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: `Read the following friendly tutoring explanation naturally and clearly:\n\n${cleanText}`,
-                },
-              ],
-            },
-          ],
-          generationConfig: {
-            responseModalities: ['AUDIO'],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: { voiceName: chosenVoice },
-              },
-            },
-          },
-        }),
-      }
-    )
-    const data = await res.json()
-    if (!res.ok) throw new Error(data?.error?.message || 'Gemini TTS error')
-    const inline = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData
-    if (!inline?.data) throw new Error('No audio returned from Gemini TTS.')
-    const rateMatch = String(inline.mimeType || '').match(/rate=(\d+)/)
-    const sampleRate = rateMatch ? Number(rateMatch[1]) : 24000
-    return pcmBase64ToWavUrl(inline.data, sampleRate)
+    playerRef.current.setMuted(speakerMuted)
+    playerRef.current.ensureContext()
+    return playerRef.current
   }
 
-  const playMessageAudio = async (text, msgId, force = false) => {
-    if (!autoSpeak && !force) return
-    stopAudio()
+  const disconnectAll = () => {
+    micRef.current?.stop()
+    micRef.current = null
+    setMicActive(false)
+    setMicMuted(false)
 
-    const cacheKey = `${msgId}:${voiceName}`
-    let wavUrl = audioCacheRef.current.get(cacheKey)
+    liveClientRef.current?.close()
+    liveClientRef.current = null
+    setLiveConnected(false)
+    setConnecting(false)
+    setThinking(false)
 
-    try {
-      if (!wavUrl) {
-        setTtsLoadingId(msgId)
-        wavUrl = await fetchNeuralAudioUrl(text, voiceName)
-        audioCacheRef.current.set(cacheKey, wavUrl)
-      }
-      setTtsLoadingId(null)
-      const audio = new Audio(wavUrl)
-      audioElRef.current = audio
-      setPlayingId(msgId)
-      audio.onended = () => {
-        setPlayingId(null)
-        audioElRef.current = null
-      }
-      audio.onerror = () => {
-        setPlayingId(null)
-        audioElRef.current = null
-      }
-      await audio.play()
-    } catch (err) {
-      setTtsLoadingId(null)
-      setPlayingId(null)
-      if (force) setErrorMsg(`Voice playback error: ${err.message}`)
-    }
+    playerRef.current?.close()
+    playerRef.current = null
+    setModelSpeaking(false)
+
+    activeUserMsgIdRef.current = null
+    activeModelMsgIdRef.current = null
   }
 
-  // ---- Gemini Chat / Audio Understanding ----
-  const callGeminiDirect = async (apiKey, payload, history) => {
-    const isAudio = Boolean(payload.audioBase64)
-    const userParts = isAudio
-      ? [
-          {
-            inlineData: {
-              mimeType: (payload.audioMimeType || 'audio/webm').split(';')[0],
-              data: payload.audioBase64,
-            },
-          },
-          {
-            text: 'Listen to the student speaking. Return ONLY valid JSON with two keys: "transcript" (exact words the student spoke) and "reply" (your helpful 2-4 sentence tutor answer in the same language they spoke). If silent or unclear, set transcript to "(unclear audio)" and ask them politely to try again.',
-          },
-        ]
-      : [{ text: payload.message }]
+  const ensureLiveSession = async (chosenVoice = voiceName) => {
+    if (liveClientRef.current?.ready) return liveClientRef.current
 
-    const contents = [
-      ...history.slice(-10).map((m) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.text }],
-      })),
-      { role: 'user', parts: userParts },
-    ]
+    setConnecting(true)
+    setErrorMsg('')
+    ensurePlayer()
 
-    let lastErr = 'Gemini API request failed.'
-    for (const model of MODEL_CHAIN) {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(
-          apiKey
-        )}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: CLIENT_SYSTEM_PROMPT }] },
-            contents,
-            generationConfig: {
-              temperature: 0.4,
-              maxOutputTokens: 420,
-              ...(isAudio ? { responseMimeType: 'application/json' } : {}),
-            },
-          }),
-        }
-      )
-      const data = await res.json()
-      if (res.ok) {
-        const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'No response received.'
-        if (isAudio) {
-          try {
-            const parsed = JSON.parse(rawText)
-            return {
-              transcript: parsed.transcript || '(voice question)',
-              reply: parsed.reply || rawText,
-            }
-          } catch {
-            return { transcript: '(voice question)', reply: rawText }
+    const client = new GeminiLiveClient({
+      voiceName: chosenVoice,
+      systemInstruction: LIVE_SYSTEM_INSTRUCTION,
+      directApiKey: getDirectKey(),
+      onReady: () => {
+        setLiveConnected(true)
+        setConnecting(false)
+      },
+      onUserTranscript: (chunk) => {
+        activeModelMsgIdRef.current = null
+        setMessages((prev) => {
+          if (activeUserMsgIdRef.current) {
+            return prev.map((m) =>
+              m.id === activeUserMsgIdRef.current ? { ...m, text: m.text + chunk } : m
+            )
           }
-        }
-        return { reply: rawText }
-      }
-      lastErr = data?.error?.message || `HTTP ${res.status}`
+          const newId = Date.now() + Math.random()
+          activeUserMsgIdRef.current = newId
+          return [...prev, { id: newId, role: 'user', text: chunk.trimStart() }]
+        })
+      },
+      onModelTranscript: (chunk) => {
+        setThinking(false)
+        activeUserMsgIdRef.current = null
+        setMessages((prev) => {
+          if (activeModelMsgIdRef.current) {
+            return prev.map((m) =>
+              m.id === activeModelMsgIdRef.current ? { ...m, text: m.text + chunk } : m
+            )
+          }
+          const newId = Date.now() + Math.random()
+          activeModelMsgIdRef.current = newId
+          return [...prev, { id: newId, role: 'assistant', text: chunk.trimStart() }]
+        })
+      },
+      onAudioChunk: (b64, rate) => {
+        setThinking(false)
+        playerRef.current?.enqueueBase64(b64, rate)
+      },
+      onInterrupted: () => {
+        playerRef.current?.interrupt()
+        activeModelMsgIdRef.current = null
+        setThinking(false)
+      },
+      onTurnComplete: () => {
+        setThinking(false)
+        activeUserMsgIdRef.current = null
+        activeModelMsgIdRef.current = null
+      },
+      onError: (msg) => {
+        setErrorMsg(msg)
+        setConnecting(false)
+        setThinking(false)
+      },
+      onClose: () => {
+        setLiveConnected(false)
+        setConnecting(false)
+        setThinking(false)
+        micRef.current?.stop()
+        micRef.current = null
+        setMicActive(false)
+        liveClientRef.current = null
+      },
+    })
+
+    liveClientRef.current = client
+    try {
+      await client.connect()
+      return client
+    } catch (err) {
+      setConnecting(false)
+      setLiveConnected(false)
+      liveClientRef.current = null
+      if (!getDirectKey()) setShowKeyBox(true)
+      setErrorMsg(err.message || 'Could not connect to Gemini 3.8 Live.')
+      throw err
     }
-    throw new Error(lastErr)
+  }
+
+  const startLiveCall = async () => {
+    setErrorMsg('')
+    try {
+      const client = await ensureLiveSession()
+      if (!micRef.current) {
+        const mic = new MicPcmStreamer({
+          onChunk: (b64) => client.sendPcmAudio(b64),
+          onLevels: (bars) => setMeterLevels(bars),
+        })
+        await mic.start()
+        micRef.current = mic
+      }
+      setMicActive(true)
+      setMicMuted(false)
+    } catch (err) {
+      if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
+        setErrorMsg(
+          'Microphone permission was blocked. Click the lock/mic icon in your address bar, allow Microphone, and try again.'
+        )
+      } else if (!errorMsg) {
+        setErrorMsg(err?.message || 'Could not start live microphone.')
+      }
+    }
+  }
+
+  const stopLiveCall = () => {
+    disconnectAll()
+  }
+
+  const toggleMicMute = () => {
+    if (!micRef.current) return
+    const next = !micMuted
+    setMicMuted(next)
+    micRef.current.setMuted(next)
   }
 
   const sendTextMessage = async (textToSend) => {
     const trimmed = textToSend.trim()
-    if (!trimmed || loading) return
+    if (!trimmed || connecting) return
 
-    stopAudio()
     setErrorMsg('')
-    const historySnapshot = [...messages]
-    setMessages((prev) => [...prev, { id: Date.now(), role: 'user', text: trimmed }])
+    playerRef.current?.interrupt()
+    activeUserMsgIdRef.current = null
+    activeModelMsgIdRef.current = null
+
+    setMessages((prev) => [...prev, { id: Date.now() + Math.random(), role: 'user', text: trimmed }])
     setInput('')
-    setLoading(true)
+    setThinking(true)
 
     try {
-      const directKey = getActiveLocalKey()
-      let reply = ''
-
-      if (!directKey) {
-        const res = await fetch('/api/tutor', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: trimmed, history: historySnapshot }),
-        })
-        const data = await res.json()
-        if (!res.ok) {
-          setShowKeyBox(true)
-          throw new Error(data?.error || 'Could not reach /api/tutor.')
-        }
-        reply = data.reply
-      } else {
-        const result = await callGeminiDirect(directKey, { message: trimmed }, historySnapshot)
-        reply = result.reply
-      }
-
-      const replyId = Date.now() + 1
-      setMessages((prev) => [...prev, { id: replyId, role: 'assistant', text: reply }])
-      playMessageAudio(reply, replyId)
-    } catch (err) {
-      setErrorMsg(err.message || 'Could not reach Gemini.')
-    } finally {
-      setLoading(false)
+      const client = await ensureLiveSession()
+      client.sendText(trimmed)
+    } catch {
+      setThinking(false)
     }
   }
 
-  const sendAudioBlob = async (blob, mimeType) => {
-    stopAudio()
-    setErrorMsg('')
-    const placeholderId = Date.now()
-    const historySnapshot = [...messages]
-    setMessages((prev) => [
-      ...prev,
-      { id: placeholderId, role: 'user', text: 'Transcribing your voice...' },
-    ])
-    setLoading(true)
-
-    try {
-      const audioBase64 = await blobToBase64(blob)
-      const directKey = getActiveLocalKey()
-      let result
-
-      if (!directKey) {
-        const res = await fetch('/api/tutor', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            audioBase64,
-            audioMimeType: mimeType || 'audio/webm',
-            history: historySnapshot,
-          }),
-        })
-        const data = await res.json()
-        if (!res.ok) throw new Error(data?.error || 'Voice request failed.')
-        result = data
-      } else {
-        result = await callGeminiDirect(
-          directKey,
-          { audioBase64, audioMimeType: mimeType || 'audio/webm' },
-          historySnapshot
-        )
-      }
-
-      const replyId = Date.now() + 1
-      setMessages((prev) => [
-        ...prev.map((m) =>
-          m.id === placeholderId
-            ? { ...m, text: result.transcript || '(voice question)' }
-            : m
-        ),
-        { id: replyId, role: 'assistant', text: result.reply },
-      ])
-      playMessageAudio(result.reply, replyId)
-    } catch (err) {
-      setMessages((prev) => prev.filter((m) => m.id !== placeholderId))
-      setErrorMsg(err.message || 'Could not process voice recording.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // ---- Universal MediaRecorder Microphone (Works in Opera GX, Chrome, Firefox, Safari) ----
-  const startRecording = async () => {
-    if (loading) return
-    stopAudio()
-    setErrorMsg('')
-
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-      setErrorMsg('Microphone recording requires HTTPS and a modern browser.')
-      return
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      audioStreamRef.current = stream
-      chunksRef.current = []
-      cancelRecordingRef.current = false
-
-      const mime = pickSupportedAudioMime()
-      const recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream)
-      mediaRecorderRef.current = recorder
-
-      recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) chunksRef.current.push(e.data)
-      }
-
-      recorder.onstop = () => {
-        const wasCanceled = cancelRecordingRef.current
-        const chunks = chunksRef.current
-        const finalMime = recorder.mimeType || mime || 'audio/webm'
-        if (!wasCanceled && chunks.length > 0) {
-          const blob = new Blob(chunks, { type: finalMime })
-          if (blob.size > 800) {
-            sendAudioBlob(blob, finalMime)
-          } else {
-            setErrorMsg('Recording was too short—tap the mic, speak, then tap Send.')
-          }
-        }
-      }
-
-      // Live voice volume meter via Web Audio API
-      try {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext
-        const ctx = new AudioCtx()
-        audioCtxRef.current = ctx
-        const src = ctx.createMediaStreamSource(stream)
-        const analyser = ctx.createAnalyser()
-        analyser.fftSize = 64
-        src.connect(analyser)
-        const freqData = new Uint8Array(analyser.frequencyBinCount)
-
-        const tick = () => {
-          analyser.getByteFrequencyData(freqData)
-          const bars = [1, 3, 5, 7, 9, 11, 13].map((idx) =>
-            Math.max(18, Math.min(100, Math.round((freqData[idx] / 255) * 100)))
-          )
-          setMeterLevels(bars)
-          rafRef.current = requestAnimationFrame(tick)
-        }
-        tick()
-      } catch {
-        // Visualizer optional; recording still works
-      }
-
-      recorder.start()
-      setRecording(true)
-      setRecordSeconds(0)
-      timerRef.current = setInterval(() => {
-        setRecordSeconds((s) => {
-          if (s >= 29) {
-            cleanupRecording(false)
-            return 30
-          }
-          return s + 1
-        })
-      }, 1000)
-    } catch (err) {
-      if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
-        setErrorMsg(
-          'Microphone permission was blocked. Click the lock/mic icon in your browser address bar, allow Microphone, and try again.'
-        )
-      } else {
-        setErrorMsg(`Could not start microphone: ${err?.message || err}`)
+  const handleVoiceChange = (nextVoice) => {
+    setVoiceName(nextVoice)
+    if (liveConnected || micActive) {
+      const wasInCall = micActive
+      disconnectAll()
+      if (wasInCall) {
+        setTimeout(() => {
+          ensureLiveSession(nextVoice)
+            .then(async (client) => {
+              const mic = new MicPcmStreamer({
+                onChunk: (b64) => client.sendPcmAudio(b64),
+                onLevels: (bars) => setMeterLevels(bars),
+              })
+              await mic.start()
+              micRef.current = mic
+              setMicActive(true)
+            })
+            .catch(() => {})
+        }, 120)
       }
     }
-  }
-
-  const stopAndSendRecording = () => {
-    cleanupRecording(false)
-  }
-
-  const cancelRecording = () => {
-    cleanupRecording(true)
   }
 
   const saveLocalKey = (val) => {
@@ -516,12 +318,10 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
   }
 
   const clearChat = () => {
-    stopAudio()
+    disconnectAll()
     setErrorMsg('')
     setMessages([WELCOME_MSG])
   }
-
-  const formatTimer = (sec) => `0:${String(sec).padStart(2, '0')}`
 
   return (
     <AnimatePresence>
@@ -532,8 +332,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => {
-              cleanupRecording(true)
-              stopAudio()
+              disconnectAll()
               onClose()
             }}
             className="fixed inset-0 bg-black/65 backdrop-blur-xs z-50"
@@ -555,35 +354,49 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-sm font-bold text-white leading-tight">
-                      Voice Code Tutor
+                      Live Voice Tutor
                     </h3>
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-emerald-500/15 text-emerald-300">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> HD Voice
+                    <span
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold ${
+                        liveConnected
+                          ? 'bg-emerald-500/20 text-emerald-300'
+                          : 'bg-zinc-800 text-zinc-400'
+                      }`}
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          liveConnected ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'
+                        }`}
+                      />
+                      {connecting ? 'Connecting' : liveConnected ? 'LIVE' : 'Standby'}
                     </span>
                   </div>
-                  <p className="text-[11px] text-zinc-400 font-mono">Gemini Neural Voice · Audio &amp; Chat</p>
+                  <p className="text-[11px] text-zinc-400 font-mono">
+                    gemini-3.8-live · Real-time Audio
+                  </p>
                 </div>
               </div>
 
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => {
-                    if (autoSpeak) stopAudio()
-                    setAutoSpeak((v) => !v)
+                    const next = !speakerMuted
+                    setSpeakerMuted(next)
+                    playerRef.current?.setMuted(next)
                   }}
-                  title={autoSpeak ? 'Mute auto-speak' : 'Enable auto-speak'}
+                  title={speakerMuted ? 'Unmute tutor voice' : 'Mute tutor voice'}
                   className={`p-1.5 rounded-lg border cursor-pointer transition ${
-                    autoSpeak
+                    !speakerMuted
                       ? 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300'
                       : 'bg-zinc-900 border-zinc-800 text-zinc-400'
                   }`}
                 >
-                  {autoSpeak ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                  {speakerMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                 </button>
 
                 <button
                   onClick={clearChat}
-                  title="Clear conversation"
+                  title="Reset session"
                   className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200 cursor-pointer transition"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -603,8 +416,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
 
                 <button
                   onClick={() => {
-                    cleanupRecording(true)
-                    stopAudio()
+                    disconnectAll()
                     onClose()
                   }}
                   title="Close (Esc)"
@@ -615,16 +427,13 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
               </div>
             </div>
 
-            {/* Voice Picker & Mock Professor Bar */}
+            {/* Voice Selector + Mock Professor */}
             <div className="px-4 py-2.5 border-b border-zinc-800/70 bg-zinc-950/60 flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5">
                 <span className="text-[11px] text-zinc-500 font-medium">Voice:</span>
                 <select
                   value={voiceName}
-                  onChange={(e) => {
-                    stopAudio()
-                    setVoiceName(e.target.value)
-                  }}
+                  onChange={(e) => handleVoiceChange(e.target.value)}
                   aria-label="Tutor voice"
                   className="bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1 text-[11px] font-semibold text-zinc-200 focus:outline-none focus:border-emerald-500 cursor-pointer"
                 >
@@ -642,11 +451,77 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                     'Act like our CSCI 1380 professor during our final presentation. Ask me ONE short question about our Student Club Member Directory code and wait for my answer.'
                   )
                 }
-                disabled={loading || recording}
+                disabled={connecting}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-amber-500/15 border border-amber-500/35 text-amber-300 hover:bg-amber-500/25 disabled:opacity-40 cursor-pointer transition shrink-0"
               >
                 <GraduationCap className="w-3.5 h-3.5" /> Mock Professor
               </button>
+            </div>
+
+            {/* Live Voice Call Hero Bar */}
+            <div className="px-4 py-3 border-b border-zinc-800/80 bg-[#0b0d12]">
+              {!micActive ? (
+                <button
+                  onClick={startLiveCall}
+                  disabled={connecting}
+                  className="w-full inline-flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white shadow-lg shadow-emerald-600/25 cursor-pointer transition"
+                >
+                  {connecting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> Connecting to Gemini 3.8 Live...
+                    </>
+                  ) : (
+                    <>
+                      <PhoneCall className="w-4 h-4" /> Start Live Voice Call (Talk Naturally)
+                    </>
+                  )}
+                </button>
+              ) : (
+                <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/35">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Radio className="w-4 h-4 text-emerald-400 animate-pulse shrink-0" />
+                    <div className="flex items-end gap-0.5 h-5">
+                      {meterLevels.map((lvl, idx) => (
+                        <span
+                          key={idx}
+                          style={{ height: `${lvl}%` }}
+                          className={`w-1 rounded-full transition-all duration-75 ${
+                            micMuted ? 'bg-zinc-600' : 'bg-emerald-400'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-xs font-semibold text-emerald-200 truncate">
+                      {micMuted
+                        ? 'Mic muted'
+                        : modelSpeaking
+                        ? 'Tutor speaking (interrupt anytime)'
+                        : 'Live — just speak!'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      onClick={toggleMicMute}
+                      title={micMuted ? 'Unmute mic' : 'Mute mic'}
+                      className={`p-1.5 rounded-lg border cursor-pointer transition ${
+                        micMuted
+                          ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                          : 'bg-zinc-900 border-zinc-700 text-zinc-200 hover:text-white'
+                      }`}
+                    >
+                      {micMuted ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+                    </button>
+                    <button
+                      onClick={stopLiveCall}
+                      title="End Live Call"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white cursor-pointer transition"
+                    >
+                      <PhoneOff className="w-3.5 h-3.5" /> End
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Optional Local Key Drawer */}
@@ -670,65 +545,38 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                       className="w-full bg-zinc-900 border border-zinc-800 focus:border-emerald-500 focus:outline-none rounded-lg px-3 py-1.5 font-mono text-xs text-white"
                     />
                     <p className="text-[11px] text-zinc-400">
-                      On Vercel, <code className="text-zinc-200">GEMINI_API_KEY</code> in Environment Variables powers both <code className="text-zinc-200">/api/tutor</code> and <code className="text-zinc-200">/api/tts</code> securely.
+                      On Vercel, <code className="text-zinc-200">GEMINI_API_KEY</code> mints single-use ephemeral tokens via <code className="text-zinc-200">/api/live-token</code> so your key stays server-side.
                     </p>
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {/* Messages */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3.5">
-              {messages.map((m) => {
-                const isPlaying = playingId === m.id
-                const isLoadingTts = ttsLoadingId === m.id
-                return (
-                  <motion.div
-                    key={m.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
+            {/* Live Transcript Feed */}
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+              {messages.map((m) => (
+                <motion.div
+                  key={m.id}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
+                >
+                  <div
+                    className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap ${
+                      m.role === 'user'
+                        ? 'bg-emerald-600 text-white rounded-br-sm'
+                        : 'bg-zinc-900/90 border border-zinc-800 text-zinc-200 rounded-bl-sm'
+                    }`}
                   >
-                    <div
-                      className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap ${
-                        m.role === 'user'
-                          ? 'bg-emerald-600 text-white rounded-br-sm'
-                          : 'bg-zinc-900/90 border border-zinc-800 text-zinc-200 rounded-bl-sm'
-                      }`}
-                    >
-                      <FormattedText text={m.text} />
-                    </div>
-                    {m.role === 'assistant' && (
-                      <button
-                        onClick={() =>
-                          isPlaying ? stopAudio() : playMessageAudio(m.text, m.id, true)
-                        }
-                        disabled={isLoadingTts}
-                        className="mt-1 ml-1 inline-flex items-center gap-1 text-[10.5px] font-medium text-zinc-500 hover:text-emerald-300 disabled:opacity-60 cursor-pointer transition"
-                      >
-                        {isLoadingTts ? (
-                          <>
-                            <Loader2 className="w-3 h-3 animate-spin text-emerald-400" /> Generating HD voice...
-                          </>
-                        ) : isPlaying ? (
-                          <>
-                            <Square className="w-2.5 h-2.5 fill-current text-emerald-400" /> Stop audio
-                          </>
-                        ) : (
-                          <>
-                            <Volume2 className="w-3 h-3" /> Listen ({voiceName})
-                          </>
-                        )}
-                      </button>
-                    )}
-                  </motion.div>
-                )
-              })}
+                    <FormattedText text={m.text} />
+                  </div>
+                </motion.div>
+              ))}
 
-              {loading && (
+              {thinking && (
                 <div className="flex items-center gap-2 text-xs text-zinc-400 px-1">
                   <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
-                  Thinking...
+                  Responding live...
                 </div>
               )}
 
@@ -739,39 +587,24 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
               )}
             </div>
 
-            {/* Starter Chips */}
-            <div className="px-4 pb-2 flex flex-wrap gap-1.5">
-              {STARTER_PROMPTS.map((p) => (
-                <button
-                  key={p}
-                  onClick={() => sendTextMessage(p)}
-                  disabled={loading || recording}
-                  className="px-2.5 py-1 rounded-lg bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 disabled:opacity-40 text-[11px] text-zinc-300 hover:text-white cursor-pointer transition"
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-
-            {/* Active Speaking Banner */}
-            {playingId !== null && !recording && (
+            {/* Speaking Interrupt Bar (when typing without full mic call) */}
+            {modelSpeaking && !micActive && (
               <div className="mx-4 mb-2 px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between text-xs text-emerald-300">
-                <div className="flex items-center gap-2.5">
-                  <Radio className="w-3.5 h-3.5 text-emerald-400" />
+                <div className="flex items-center gap-2">
                   <div className="flex items-end gap-0.5 h-3.5">
                     {[0, 1, 2, 3, 4].map((bar) => (
                       <motion.span
                         key={bar}
                         animate={{ height: ['25%', '100%', '35%'] }}
-                        transition={{ repeat: Infinity, duration: 0.55, delay: bar * 0.1 }}
+                        transition={{ repeat: Infinity, duration: 0.5, delay: bar * 0.08 }}
                         className="w-1 bg-emerald-400 rounded-full"
                       />
                     ))}
                   </div>
-                  <span className="font-semibold">Speaking ({voiceName})...</span>
+                  <span className="font-semibold">Speaking live ({voiceName})...</span>
                 </div>
                 <button
-                  onClick={stopAudio}
+                  onClick={() => playerRef.current?.interrupt()}
                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-900 text-zinc-200 hover:text-white cursor-pointer"
                 >
                   <Square className="w-3 h-3" /> Stop
@@ -779,79 +612,59 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
               </div>
             )}
 
-            {/* Input Area OR Live Recording Bar */}
-            {recording ? (
-              <div className="p-3.5 border-t border-rose-500/35 bg-rose-950/25 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse shrink-0" />
-                  <span className="font-mono text-xs font-bold text-rose-200">
-                    {formatTimer(recordSeconds)}
-                  </span>
-                  <div className="flex items-end gap-1 h-5">
-                    {meterLevels.map((lvl, idx) => (
-                      <span
-                        key={idx}
-                        style={{ height: `${lvl}%` }}
-                        className="w-1 bg-rose-400 rounded-full transition-all duration-75"
-                      />
-                    ))}
-                  </div>
-                  <span className="text-xs text-rose-200/80 truncate">Recording...</span>
-                </div>
+            {/* Starter Prompts */}
+            <div className="px-4 pb-2 flex flex-wrap gap-1.5">
+              {STARTER_PROMPTS.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => sendTextMessage(p)}
+                  disabled={connecting}
+                  className="px-2.5 py-1 rounded-lg bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 disabled:opacity-40 text-[11px] text-zinc-300 hover:text-white cursor-pointer transition"
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
 
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={cancelRecording}
-                    className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-zinc-900 border border-zinc-700 text-zinc-300 hover:text-white cursor-pointer transition"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={stopAndSendRecording}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer transition shadow-md shadow-emerald-600/25"
-                  >
-                    <Check className="w-3.5 h-3.5" /> Send Voice
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  sendTextMessage(input)
-                }}
-                className="p-3.5 border-t border-zinc-800/90 bg-zinc-900/75 flex items-center gap-2"
+            {/* Text Input Bar */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                sendTextMessage(input)
+              }}
+              className="p-3.5 border-t border-zinc-800/90 bg-zinc-900/75 flex items-center gap-2"
+            >
+              <button
+                type="button"
+                onClick={micActive ? stopLiveCall : startLiveCall}
+                disabled={connecting}
+                title={micActive ? 'End live voice' : 'Start live voice'}
+                className={`p-2.5 rounded-xl border cursor-pointer transition shrink-0 ${
+                  micActive
+                    ? 'bg-rose-600 border-rose-500 text-white'
+                    : 'bg-zinc-950 border-zinc-800 text-zinc-300 hover:border-emerald-500/60 hover:text-emerald-300'
+                }`}
               >
-                <button
-                  type="button"
-                  onClick={startRecording}
-                  disabled={loading}
-                  title="Tap to record your voice"
-                  className="p-2.5 rounded-xl border bg-zinc-950 border-zinc-800 text-zinc-300 hover:border-emerald-500/60 hover:text-emerald-300 disabled:opacity-40 cursor-pointer transition shrink-0"
-                >
-                  <Mic className="w-4 h-4" />
-                </button>
+                {micActive ? <PhoneOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              </button>
 
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Tap mic to speak or type here..."
-                  className="flex-1 bg-zinc-950 border border-zinc-800 focus:border-emerald-500 focus:outline-none rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white"
-                />
+              <input
+                ref={inputRef}
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Type a question or tap Start Live Voice..."
+                className="flex-1 bg-zinc-950 border border-zinc-800 focus:border-emerald-500 focus:outline-none rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white"
+              />
 
-                <button
-                  type="submit"
-                  disabled={loading || !input.trim()}
-                  className="p-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white cursor-pointer transition shrink-0"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
-              </form>
-            )}
+              <button
+                type="submit"
+                disabled={connecting || !input.trim()}
+                className="p-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white cursor-pointer transition shrink-0"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </form>
           </motion.aside>
         </>
       )}
