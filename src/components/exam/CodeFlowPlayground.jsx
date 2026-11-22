@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Play,
@@ -9,13 +9,47 @@ import {
   Mic,
   ArrowUp,
   Check,
+  Volume2,
+  FileText,
 } from 'lucide-react'
 import { CODE_FLOW_TOPICS } from '../../data/codeFlowData'
+import { FLOW_AUDIO_META } from '../../data/flowAudioMeta'
 import PythonLine from '../PythonLine'
 
-function ListRibbonVisual({ ribbon }) {
+const SPRING_GLIDE = { type: 'spring', stiffness: 360, damping: 30 }
+
+function formatTime(sec) {
+  if (!Number.isFinite(sec) || sec < 0) return '0:00'
+  const m = Math.floor(sec / 60)
+  const s = Math.floor(sec % 60)
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+function RollingValue({ value, className = '' }) {
+  return (
+    <span className={`inline-flex overflow-hidden align-bottom ${className}`}>
+      <AnimatePresence mode="popLayout" initial={false}>
+        <motion.span
+          key={String(value)}
+          initial={{ y: 10, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: -10, opacity: 0 }}
+          transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          className="inline-block"
+        >
+          {value}
+        </motion.span>
+      </AnimatePresence>
+    </span>
+  )
+}
+
+function ListRibbonVisual({ ribbon, scenarioId }) {
   const count = ribbon.items.length
   const [sliceStart, sliceEnd] = ribbon.sliceRange || [-1, -1]
+  const hasActive = typeof ribbon.activeIdx === 'number' && ribbon.activeIdx >= 0
+  const showNextHint =
+    hasActive && !ribbon.activeNeg && ribbon.activeIdx + 1 < count && !ribbon.removedNote
 
   return (
     <div className="neu-inset rounded-2xl p-4 space-y-3">
@@ -25,85 +59,142 @@ function ListRibbonVisual({ ribbon }) {
       </div>
 
       <div className="overflow-x-auto pb-1">
-        <div className="flex items-stretch gap-2.5 min-w-max">
+        <div className="flex items-start gap-1.5 min-w-max">
           <AnimatePresence mode="popLayout">
             {ribbon.items.map((item, idx) => {
               const negIdx = idx - count
               const isActive = ribbon.activeIdx === idx
               const isMutated = ribbon.mutatedIdx === idx
+              const isNextUp = showNextHint && idx === ribbon.activeIdx + 1
               const inSlice = sliceStart >= 0 && idx >= sliceStart && idx < sliceEnd
 
               return (
                 <motion.div
                   key={item.id}
                   layout
-                  initial={{ opacity: 0, scale: 0.9 }}
+                  initial={{ opacity: 0, scale: 0.88 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.85 }}
-                  transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-                  className="flex flex-col items-center gap-1 min-w-[74px]"
+                  exit={{ opacity: 0, scale: 0.82 }}
+                  transition={SPRING_GLIDE}
+                  className="flex items-center gap-1.5"
                 >
-                  {/* Positive Index */}
-                  <span
-                    className={`font-mono text-[11px] px-1.5 py-0.5 rounded-md transition-colors ${
-                      isActive && !ribbon.activeNeg
-                        ? 'font-bold text-white'
-                        : inSlice
-                        ? 'font-semibold text-ink'
-                        : 'text-ink-muted'
-                    }`}
-                    style={
-                      isActive && !ribbon.activeNeg
-                        ? { backgroundColor: 'var(--accent-bar)' }
-                        : undefined
-                    }
-                  >
-                    [{idx}]
-                  </span>
+                  <div className="flex flex-col items-center gap-1 min-w-[74px]">
+                    {/* Positive Index */}
+                    <span
+                      className={`font-mono text-[11px] px-1.5 py-0.5 rounded-md transition-colors ${
+                        isActive && !ribbon.activeNeg
+                          ? 'font-bold text-white'
+                          : inSlice
+                          ? 'font-semibold text-ink'
+                          : 'text-ink-muted'
+                      }`}
+                      style={
+                        isActive && !ribbon.activeNeg
+                          ? { backgroundColor: 'var(--accent-bar)' }
+                          : undefined
+                      }
+                    >
+                      [{idx}]
+                    </span>
 
-                  {/* Value Cell */}
-                  <div
-                    className={`w-full px-3 py-2.5 rounded-xl font-mono text-xs sm:text-[13px] font-semibold text-center transition-all ${
-                      isActive || isMutated || inSlice ? 'neu-card-sm text-ink' : 'neu-btn text-ink-2'
-                    }`}
-                    style={
-                      isActive
-                        ? { boxShadow: '0 0 0 2px var(--accent-bar)' }
-                        : isMutated
-                        ? { boxShadow: '0 0 0 2px #10b981' }
-                        : inSlice
-                        ? { boxShadow: '0 0 0 2px var(--accent-bar)' }
-                        : undefined
-                    }
-                  >
-                    {item.value}
+                    {/* Value Cell with Gliding Ring */}
+                    <div className="relative w-full">
+                      {isActive && (
+                        <motion.div
+                          layoutId={`list-ring-${scenarioId}`}
+                          transition={SPRING_GLIDE}
+                          className="absolute -inset-[2px] rounded-[13px] pointer-events-none z-10"
+                          style={{
+                            border: '2px solid var(--accent-bar)',
+                            backgroundColor: 'rgba(37, 99, 235, 0.08)',
+                          }}
+                        />
+                      )}
+                      {isMutated && (
+                        <motion.div
+                          initial={{ scale: 0.94, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          transition={{ duration: 0.25 }}
+                          className="absolute -inset-[2px] rounded-[13px] pointer-events-none z-10"
+                          style={{
+                            border: '2px solid #10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                          }}
+                        />
+                      )}
+                      {inSlice && !isActive && (
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          className="absolute -inset-[2px] rounded-[13px] pointer-events-none z-10"
+                          style={{
+                            border: '2px dashed var(--accent-bar)',
+                            backgroundColor: 'rgba(37, 99, 235, 0.07)',
+                          }}
+                        />
+                      )}
+                      <div
+                        className={`relative w-full px-3 py-2.5 rounded-xl font-mono text-xs sm:text-[13px] font-semibold text-center transition-colors ${
+                          isActive || isMutated || inSlice
+                            ? 'neu-card-sm text-ink'
+                            : isNextUp
+                            ? 'neu-btn text-ink'
+                            : 'neu-btn text-ink-2'
+                        }`}
+                      >
+                        <RollingValue value={item.value} />
+                      </div>
+                    </div>
+
+                    {/* Negative Index */}
+                    <span
+                      className={`font-mono text-[10.5px] px-1.5 py-0.5 rounded-md transition-colors ${
+                        isActive && ribbon.activeNeg
+                          ? 'font-bold text-white'
+                          : 'text-ink-muted opacity-80'
+                      }`}
+                      style={
+                        isActive && ribbon.activeNeg
+                          ? { backgroundColor: 'var(--accent-bar)' }
+                          : undefined
+                      }
+                    >
+                      [{negIdx}]
+                    </span>
+
+                    {/* Gliding Tracking Pointer / Next / Mutated Pill */}
+                    <div className="h-5 flex items-center justify-center">
+                      {isActive ? (
+                        <motion.div
+                          layoutId={`list-ptr-${scenarioId}`}
+                          transition={SPRING_GLIDE}
+                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md font-mono text-[10px] font-bold text-white"
+                          style={{ backgroundColor: 'var(--accent-bar)' }}
+                        >
+                          <ArrowUp className="w-2.5 h-2.5" />
+                          <span>{ribbon.activeNeg ? negIdx : idx}</span>
+                        </motion.div>
+                      ) : isMutated ? (
+                        <span className="px-1.5 py-0.5 rounded-md font-mono text-[9.5px] font-semibold bg-emerald-600/15 text-emerald-700 dark:text-emerald-300">
+                          updated
+                        </span>
+                      ) : isNextUp ? (
+                        <span className="font-mono text-[9.5px] text-ink-muted opacity-75">
+                          next
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
 
-                  {/* Negative Index */}
-                  <span
-                    className={`font-mono text-[10.5px] px-1.5 py-0.5 rounded-md transition-colors ${
-                      isActive && ribbon.activeNeg
-                        ? 'font-bold text-white'
-                        : 'text-ink-muted opacity-80'
-                    }`}
-                    style={
-                      isActive && ribbon.activeNeg
-                        ? { backgroundColor: 'var(--accent-bar)' }
-                        : undefined
-                    }
-                  >
-                    [{negIdx}]
-                  </span>
-
-                  {/* Active pointer arrow */}
-                  <div className="h-3.5 flex items-center justify-center">
-                    {isActive && (
-                      <ArrowUp
-                        className="w-3.5 h-3.5"
-                        style={{ color: 'var(--accent-bar)' }}
-                      />
-                    )}
-                  </div>
+                  {/* Subtle traversal arrow between boxes */}
+                  {idx < count - 1 && (
+                    <ChevronRight
+                      className={`w-3.5 h-3.5 -mt-5 shrink-0 transition-colors ${
+                        isActive ? 'opacity-90' : 'text-ink-muted opacity-30'
+                      }`}
+                      style={isActive ? { color: 'var(--accent-bar)' } : undefined}
+                    />
+                  )}
                 </motion.div>
               )
             })}
@@ -113,41 +204,68 @@ function ListRibbonVisual({ ribbon }) {
 
       {ribbon.sliceRange && (
         <div className="text-[11.5px] text-ink-2 font-mono">
-          Slice [{sliceStart}:{sliceEnd}] → index {sliceStart} included, index {sliceEnd} excluded
+          Slice [{sliceStart}:{sliceEnd}] → index {sliceStart} included, stops before {sliceEnd}
         </div>
       )}
 
       {ribbon.removedNote && (
-        <div className="text-[11.5px] text-ink-2">{ribbon.removedNote}</div>
+        <div className="text-[11.5px] text-emerald-700 dark:text-emerald-300 font-medium">
+          {ribbon.removedNote}
+        </div>
       )}
     </div>
   )
 }
 
-function RangeTrackVisual({ track }) {
+function RangeTrackVisual({ track, scenarioId }) {
   return (
-    <div className="neu-inset rounded-2xl p-3.5 space-y-2">
+    <div className="neu-inset rounded-2xl p-3.5 space-y-2.5">
       <div className="flex items-center justify-between text-xs">
         <span className="font-mono font-semibold text-ink">{track.expr}</span>
-        <span className="text-[11px] text-ink-muted">Loop sequence</span>
+        <span className="text-[11px] text-ink-muted">Iteration sequence</span>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-1.5">
         {track.values.map((val, idx) => {
           const isCurrent = idx === track.activeIdx
           const isDone = track.activeIdx > idx
+          const isNext = track.activeIdx >= 0 && idx === track.activeIdx + 1
           return (
-            <div
-              key={val}
-              className={`px-3 py-1.5 rounded-xl font-mono text-xs font-semibold inline-flex items-center gap-1.5 transition-all ${
-                isCurrent
-                  ? 'neu-btn-primary'
-                  : isDone
-                  ? 'state-ok'
-                  : 'neu-btn text-ink-muted'
-              }`}
-            >
-              {isDone && <Check className="w-3 h-3" />}
-              <span>i = {val}</span>
+            <div key={val} className="inline-flex items-center gap-1.5">
+              <div className="relative">
+                {isCurrent && (
+                  <motion.div
+                    layoutId={`range-pill-${scenarioId}`}
+                    transition={SPRING_GLIDE}
+                    className="absolute inset-0 rounded-xl pointer-events-none"
+                    style={{ backgroundColor: 'var(--accent-bar)' }}
+                  />
+                )}
+                <div
+                  className={`relative z-10 px-3 py-1.5 rounded-xl font-mono text-xs font-semibold inline-flex items-center gap-1.5 transition-colors ${
+                    isCurrent
+                      ? 'text-white'
+                      : isDone
+                      ? 'state-ok'
+                      : isNext
+                      ? 'neu-card-sm text-ink'
+                      : 'neu-btn text-ink-muted'
+                  }`}
+                >
+                  {isDone && <Check className="w-3 h-3" />}
+                  <span>i = {val}</span>
+                  {isNext && (
+                    <span className="text-[9.5px] font-normal opacity-70">next</span>
+                  )}
+                </div>
+              </div>
+              {idx < track.values.length - 1 && (
+                <ChevronRight
+                  className={`w-3.5 h-3.5 transition-colors ${
+                    isCurrent ? 'opacity-100' : 'text-ink-muted opacity-35'
+                  }`}
+                  style={isCurrent ? { color: 'var(--accent-bar)' } : undefined}
+                />
+              )}
             </div>
           )
         })}
@@ -158,7 +276,11 @@ function RangeTrackVisual({ track }) {
 
 function ConditionGateVisual({ condition }) {
   return (
-    <div
+    <motion.div
+      key={`${condition.expr}-${condition.result}`}
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
       className={`rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-2 text-xs ${
         condition.result ? 'state-ok' : 'state-err'
       }`}
@@ -169,11 +291,11 @@ function ConditionGateVisual({ condition }) {
       {condition.detail && (
         <span className="text-[11.5px] font-medium opacity-90">{condition.detail}</span>
       )}
-    </div>
+    </motion.div>
   )
 }
 
-function Grid2DVisual({ grid }) {
+function Grid2DVisual({ grid, scenarioId }) {
   const visitedSet = new Set(grid.visited || [])
   return (
     <div className="neu-inset rounded-2xl p-4 space-y-3">
@@ -190,17 +312,26 @@ function Grid2DVisual({ grid }) {
               const isActive = grid.active && grid.active[0] === r && grid.active[1] === c
               const isVisited = visitedSet.has(`${r},${c}`)
               return (
-                <div
-                  key={`${r}-${c}`}
-                  className={`rounded-xl py-2.5 px-2 text-center font-mono text-xs font-semibold transition-all ${
-                    isActive
-                      ? 'neu-btn-primary'
-                      : isVisited
-                      ? 'state-ok'
-                      : 'neu-btn text-ink-muted'
-                  }`}
-                >
-                  ({r}, {c})
+                <div key={`${r}-${c}`} className="relative">
+                  {isActive && (
+                    <motion.div
+                      layoutId={`grid-cursor-${scenarioId}`}
+                      transition={SPRING_GLIDE}
+                      className="absolute inset-0 rounded-xl pointer-events-none"
+                      style={{ backgroundColor: 'var(--accent-bar)' }}
+                    />
+                  )}
+                  <div
+                    className={`relative z-10 rounded-xl py-2.5 px-2 text-center font-mono text-xs font-semibold transition-colors ${
+                      isActive
+                        ? 'text-white'
+                        : isVisited
+                        ? 'state-ok'
+                        : 'neu-btn text-ink-muted'
+                    }`}
+                  >
+                    ({r}, {c})
+                  </div>
                 </div>
               )
             })}
@@ -211,7 +342,7 @@ function Grid2DVisual({ grid }) {
   )
 }
 
-function LoopTrackVisual({ track }) {
+function LoopTrackVisual({ track, scenarioId }) {
   const labelMap = {
     pending: 'waiting',
     active: 'checking',
@@ -224,11 +355,12 @@ function LoopTrackVisual({ track }) {
   return (
     <div className="neu-inset rounded-2xl p-4 space-y-2.5">
       <div className="text-xs font-semibold text-ink">Loop Iteration Track · range(1, 6)</div>
-      <div className="grid grid-cols-5 gap-2">
-        {track.items.map((item) => {
+      <div className="flex items-center gap-1 sm:gap-1.5">
+        {track.items.map((item, idx) => {
+          const isActive = item.status === 'active'
           const styleClass =
-            item.status === 'active'
-              ? 'neu-btn-primary'
+            isActive
+              ? 'text-white'
               : item.status === 'printed'
               ? 'state-ok'
               : item.status === 'stopped'
@@ -237,14 +369,28 @@ function LoopTrackVisual({ track }) {
               ? 'neu-card-sm text-amber-700 dark:text-amber-300'
               : 'neu-btn text-ink-muted opacity-65'
           return (
-            <div
-              key={item.val}
-              className={`rounded-xl p-2 text-center transition-all ${styleClass}`}
-            >
-              <div className="font-mono text-sm font-semibold">{item.val}</div>
-              <div className="text-[10px] font-medium mt-0.5 truncate">
-                {labelMap[item.status]}
+            <div key={item.val} className="flex items-center gap-1 sm:gap-1.5 flex-1 min-w-0">
+              <div className="relative flex-1 min-w-0">
+                {isActive && (
+                  <motion.div
+                    layoutId={`track-cursor-${scenarioId}`}
+                    transition={SPRING_GLIDE}
+                    className="absolute inset-0 rounded-xl pointer-events-none"
+                    style={{ backgroundColor: 'var(--accent-bar)' }}
+                  />
+                )}
+                <div
+                  className={`relative z-10 rounded-xl p-2 text-center transition-colors ${styleClass}`}
+                >
+                  <div className="font-mono text-sm font-semibold">{item.val}</div>
+                  <div className="text-[10px] font-medium mt-0.5 truncate">
+                    {labelMap[item.status]}
+                  </div>
+                </div>
               </div>
+              {idx < track.items.length - 1 && (
+                <ChevronRight className="w-3 h-3 text-ink-muted opacity-35 shrink-0 hidden sm:block" />
+              )}
             </div>
           )
         })}
@@ -266,10 +412,17 @@ function ScopeFramesVisual({ frames }) {
             <div
               key={v.name}
               className="neu-card-sm rounded-xl px-3 py-2 flex items-center justify-between gap-2 text-xs font-mono"
-              style={v.changed ? { boxShadow: '0 0 0 2px var(--accent-bar)' } : undefined}
+              style={
+                v.changed ? { boxShadow: '0 0 0 1.5px rgba(16, 185, 129, 0.7)' } : undefined
+              }
             >
               <span className="text-ink-muted">{v.name}</span>
-              <span className="font-semibold text-ink truncate">{v.value}</span>
+              <RollingValue
+                value={v.value}
+                className={`font-semibold truncate ${
+                  v.changed ? 'text-emerald-700 dark:text-emerald-300' : 'text-ink'
+                }`}
+              />
             </div>
           ))}
         </div>
@@ -279,10 +432,10 @@ function ScopeFramesVisual({ frames }) {
         {frames.local ? (
           <motion.div
             key="local-open"
-            initial={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.18 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.22 }}
             className="neu-card-sm rounded-2xl p-4 space-y-2.5"
             style={{ boxShadow: '0 0 0 1.5px var(--accent-bar)' }}
           >
@@ -301,19 +454,30 @@ function ScopeFramesVisual({ frames }) {
                   <div
                     key={v.name}
                     className="neu-inset rounded-xl px-3 py-2 flex items-center justify-between gap-2 text-xs font-mono"
-                    style={v.changed ? { boxShadow: '0 0 0 2px var(--accent-bar)' } : undefined}
+                    style={
+                      v.changed ? { boxShadow: '0 0 0 1.5px rgba(16, 185, 129, 0.7)' } : undefined
+                    }
                   >
                     <span className="text-ink-muted">{v.name}</span>
-                    <span className="font-semibold text-ink truncate">{v.value}</span>
+                    <RollingValue
+                      value={v.value}
+                      className={`font-semibold truncate ${
+                        v.changed ? 'text-emerald-700 dark:text-emerald-300' : 'text-ink'
+                      }`}
+                    />
                   </div>
                 ))}
               </div>
             )}
 
             {frames.local.returning && (
-              <div className="state-ok rounded-xl px-3 py-1.5 font-mono text-xs font-semibold">
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="state-ok rounded-xl px-3 py-1.5 font-mono text-xs font-semibold"
+              >
                 return → {frames.local.returning}
-              </div>
+              </motion.div>
             )}
           </motion.div>
         ) : (
@@ -364,15 +528,21 @@ function FileStateVisual({ fileState }) {
           fileState.lines.map((ln, idx) => {
             const isNewest = fileState.highlightLast && idx === fileState.lines.length - 1
             return (
-              <div
+              <motion.div
                 key={`${idx}-${ln}`}
+                initial={isNewest ? { opacity: 0, x: -6 } : false}
+                animate={{ opacity: 1, x: 0 }}
                 className={`flex items-center gap-2.5 px-1.5 py-0.5 rounded ${
-                  isNewest || fileState.reading ? 'bg-blue-500/15 text-blue-200' : 'text-zinc-200'
+                  isNewest
+                    ? 'bg-emerald-500/15 text-emerald-200'
+                    : fileState.reading
+                    ? 'bg-blue-500/15 text-blue-200'
+                    : 'text-zinc-200'
                 }`}
               >
                 <span className="text-zinc-500 select-none">{idx + 1}</span>
                 <span>{ln}</span>
-              </div>
+              </motion.div>
             )
           })
         )}
@@ -392,8 +562,11 @@ function DictMapVisual({ dictMap }) {
       </div>
       <div className="space-y-2">
         {dictMap.entries.map((e) => (
-          <div
+          <motion.div
             key={e.key}
+            layout
+            initial={e.added ? { opacity: 0, y: 6 } : false}
+            animate={{ opacity: 1, y: 0 }}
             className={`rounded-xl px-3 py-2 flex items-center justify-between font-mono text-xs transition-all ${
               e.added || e.updated
                 ? 'state-ok font-semibold'
@@ -405,8 +578,8 @@ function DictMapVisual({ dictMap }) {
           >
             <span>{e.key}</span>
             <span className="opacity-50">→</span>
-            <span>{e.value}</span>
-          </div>
+            <RollingValue value={e.value} />
+          </motion.div>
         ))}
       </div>
     </div>
@@ -442,28 +615,63 @@ export default function CodeFlowPlayground({ initialTopicId, onAskTutor }) {
 
   const [scenarioIdx, setScenarioIdx] = useState(0)
   const scenario = topic.scenarios[scenarioIdx] || topic.scenarios[0]
+  const audioMeta = FLOW_AUDIO_META[scenario.id]
 
   const [stepIdx, setStepIdx] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState(1) // 1 or 1.5
 
+  // HD Audio Walkthrough state (static MP3s in public/audio/flows — 0 API quota!)
+  const audioRef = useRef(null)
+  const [audioPlaying, setAudioPlaying] = useState(false)
+  const [audioTime, setAudioTime] = useState(0)
+  const [audioDuration, setAudioDuration] = useState(0)
+  const [syncWithAudio, setSyncWithAudio] = useState(true)
+  const [showTranscript, setShowTranscript] = useState(false)
+
   const step = scenario.steps[stepIdx] || scenario.steps[0]
+  const prevStep = stepIdx > 0 ? scenario.steps[stepIdx - 1] : null
+  const prevVarsMap = new Map((prevStep?.vars || []).map((v) => [v.name, v.value]))
   const totalSteps = scenario.steps.length
   const skippedSet = new Set(step.skippedLines || [])
+
+  const stopAudio = () => {
+    const el = audioRef.current
+    if (el) {
+      el.pause()
+      el.currentTime = 0
+    }
+    setAudioPlaying(false)
+    setAudioTime(0)
+  }
 
   // Sync if parent jumps to a specific topic
   useEffect(() => {
     if (initialTopicId && CODE_FLOW_TOPICS.some((t) => t.id === initialTopicId)) {
+      stopAudio()
       setTopicId(initialTopicId)
       setScenarioIdx(0)
       setStepIdx(0)
       setPlaying(false)
+      setShowTranscript(false)
     }
   }, [initialTopicId])
 
-  // Autoplay timer
+  // Stop audio on unmount or scenario change
   useEffect(() => {
-    if (!playing) return
+    setAudioDuration(0)
+    setAudioTime(0)
+    setAudioPlaying(false)
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause()
+      }
+    }
+  }, [scenario.id])
+
+  // Autoplay timer (disabled while synced HD audio drives the steps)
+  useEffect(() => {
+    if (!playing || (audioPlaying && syncWithAudio)) return
     if (stepIdx >= totalSteps - 1) {
       setPlaying(false)
       return
@@ -473,7 +681,7 @@ export default function CodeFlowPlayground({ initialTopicId, onAskTutor }) {
       setStepIdx((i) => Math.min(totalSteps - 1, i + 1))
     }, delay)
     return () => clearTimeout(timer)
-  }, [playing, stepIdx, totalSteps, speed])
+  }, [playing, audioPlaying, syncWithAudio, stepIdx, totalSteps, speed])
 
   // Keyboard stepping (Left / Right)
   useEffect(() => {
@@ -495,16 +703,20 @@ export default function CodeFlowPlayground({ initialTopicId, onAskTutor }) {
   }, [totalSteps])
 
   const selectTopic = (id) => {
+    stopAudio()
     setTopicId(id)
     setScenarioIdx(0)
     setStepIdx(0)
     setPlaying(false)
+    setShowTranscript(false)
   }
 
   const selectScenario = (idx) => {
+    stopAudio()
     setScenarioIdx(idx)
     setStepIdx(0)
     setPlaying(false)
+    setShowTranscript(false)
   }
 
   const togglePlay = () => {
@@ -512,14 +724,76 @@ export default function CodeFlowPlayground({ initialTopicId, onAskTutor }) {
       setPlaying(false)
       return
     }
+    if (audioPlaying) stopAudio()
     if (stepIdx >= totalSteps - 1) {
       setStepIdx(0)
     }
     setPlaying(true)
   }
 
+  const toggleAudioWalkthrough = () => {
+    const el = audioRef.current
+    if (!el) return
+    if (audioPlaying) {
+      el.pause()
+      setAudioPlaying(false)
+      return
+    }
+    setPlaying(false)
+    if (el.ended || (audioDuration > 0 && el.currentTime >= audioDuration - 0.15)) {
+      el.currentTime = 0
+      if (syncWithAudio) setStepIdx(0)
+    }
+    el.play()
+      .then(() => setAudioPlaying(true))
+      .catch(() => setAudioPlaying(false))
+  }
+
+  const handleAudioTimeUpdate = () => {
+    const el = audioRef.current
+    if (!el) return
+    const cur = el.currentTime || 0
+    const dur = el.duration || 0
+    setAudioTime(cur)
+    if (dur > 0 && syncWithAudio && !el.paused) {
+      const ratio = Math.min(0.999, Math.max(0, cur / dur))
+      const targetIdx = Math.min(totalSteps - 1, Math.floor(ratio * totalSteps))
+      setStepIdx((prev) => (prev === targetIdx ? prev : targetIdx))
+    }
+  }
+
+  const handleAudioSeek = (e) => {
+    const el = audioRef.current
+    if (!el || !audioDuration) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
+    el.currentTime = pct * audioDuration
+    setAudioTime(el.currentTime)
+    if (syncWithAudio) {
+      setStepIdx(Math.min(totalSteps - 1, Math.floor(pct * totalSteps)))
+    }
+  }
+
+  const audioProgressPct = audioDuration > 0 ? Math.min(100, (audioTime / audioDuration) * 100) : 0
+
   return (
     <div className="space-y-5" data-lock-tab-keys="true">
+      {/* Hidden static HTMLAudioElement for current scenario walkthrough */}
+      {audioMeta && (
+        <audio
+          key={scenario.id}
+          ref={audioRef}
+          src={audioMeta.url}
+          preload="metadata"
+          onLoadedMetadata={(e) => setAudioDuration(e.currentTarget.duration || 0)}
+          onTimeUpdate={handleAudioTimeUpdate}
+          onEnded={() => {
+            setAudioPlaying(false)
+            if (syncWithAudio) setStepIdx(totalSteps - 1)
+          }}
+        />
+      )}
+
       {/* Topic Picker Strip */}
       <div className="neu-card rounded-2xl p-4 sm:p-5 space-y-3.5">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
@@ -607,11 +881,90 @@ export default function CodeFlowPlayground({ initialTopicId, onAskTutor }) {
           </div>
         </div>
 
+        {/* Audio Walkthrough Bar (pre-generated HD neural voice — zero runtime quota!) */}
+        {audioMeta && (
+          <div className="neu-inset rounded-2xl p-3 sm:p-3.5 space-y-2.5">
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={toggleAudioWalkthrough}
+                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer shrink-0 ${
+                  audioPlaying ? 'neu-btn-primary' : 'neu-btn'
+                }`}
+              >
+                {audioPlaying ? (
+                  <>
+                    <Pause className="w-3.5 h-3.5" />
+                    <span>Pause Audio</span>
+                  </>
+                ) : (
+                  <>
+                    <Volume2 className="w-3.5 h-3.5" />
+                    <span>Audio Walkthrough</span>
+                  </>
+                )}
+              </button>
+
+              {/* Progress scrubber */}
+              <div className="flex-1 min-w-[140px] flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleAudioSeek}
+                  aria-label="Seek audio walkthrough"
+                  className="flex-1 h-2 rounded-full overflow-hidden cursor-pointer relative"
+                  style={{ backgroundColor: 'var(--divider)' }}
+                >
+                  <div
+                    className="h-full rounded-full transition-all duration-150"
+                    style={{
+                      width: `${audioProgressPct}%`,
+                      backgroundColor: 'var(--accent-bar)',
+                    }}
+                  />
+                </button>
+                <span className="font-mono text-[11px] text-ink-muted shrink-0">
+                  {formatTime(audioTime)} / {formatTime(audioDuration)}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setSyncWithAudio((v) => !v)}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold cursor-pointer transition ${
+                    syncWithAudio ? 'neu-card-sm text-ink' : 'text-ink-muted hover:text-ink'
+                  }`}
+                  title="Automatically step through the visual diagram while audio plays"
+                >
+                  Sync steps: {syncWithAudio ? 'On' : 'Off'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowTranscript((v) => !v)}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold cursor-pointer transition ${
+                    showTranscript ? 'neu-card-sm text-ink' : 'text-ink-muted hover:text-ink'
+                  }`}
+                >
+                  <FileText className="w-3 h-3" />
+                  <span>Script</span>
+                </button>
+              </div>
+            </div>
+
+            {showTranscript && (
+              <p className="text-xs text-ink-2 leading-relaxed pt-2 border-t neu-divider">
+                {audioMeta.script}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* 2-Column Interactive Execution Split */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
           {/* LEFT: Code Tracer + Transport + Plain-English Step Explanation */}
           <div className="lg:col-span-6 space-y-4">
-            {/* Syntax-highlighted Code Well */}
+            {/* Syntax-highlighted Code Well with Gliding Active Line */}
             <div className="code-well rounded-2xl py-3 px-2 font-mono text-xs sm:text-[13px] leading-relaxed overflow-x-auto max-w-full">
               {scenario.code.map((ln, idx) => {
                 const lineNum = idx + 1
@@ -620,30 +973,37 @@ export default function CodeFlowPlayground({ initialTopicId, onAskTutor }) {
                 return (
                   <div
                     key={lineNum}
-                    className={`flex items-center gap-3 px-2.5 py-1 rounded-lg transition-colors whitespace-pre ${
-                      isActive
-                        ? 'bg-blue-500/20 text-white'
-                        : isSkipped
-                        ? 'opacity-35'
-                        : ''
+                    className={`relative flex items-center gap-3 px-2.5 py-1 rounded-lg whitespace-pre ${
+                      isSkipped ? 'opacity-35' : ''
                     }`}
-                    style={
-                      isActive
-                        ? { boxShadow: 'inset 3px 0 0 var(--accent-bar)' }
-                        : undefined
-                    }
                   >
-                    <span className="w-5 text-right text-[11px] text-zinc-500 select-none shrink-0">
+                    {isActive && (
+                      <motion.div
+                        layoutId={`code-line-${scenario.id}`}
+                        transition={SPRING_GLIDE}
+                        className="absolute inset-0 rounded-lg bg-blue-500/20 pointer-events-none"
+                        style={{ boxShadow: 'inset 3px 0 0 var(--accent-bar)' }}
+                      />
+                    )}
+                    <span className="relative z-10 w-5 text-right text-[11px] text-zinc-500 select-none shrink-0">
                       {lineNum}
                     </span>
-                    <span className="w-3 text-[10px] select-none shrink-0" style={{ color: 'var(--accent-bar)' }}>
-                      {isActive ? '▶' : ''}
+                    <span className="relative z-10 w-3 text-[10px] select-none shrink-0 flex items-center justify-center">
+                      {isActive && (
+                        <motion.span
+                          layoutId={`code-arrow-${scenario.id}`}
+                          transition={SPRING_GLIDE}
+                          style={{ color: 'var(--accent-bar)' }}
+                        >
+                          ▶
+                        </motion.span>
+                      )}
                     </span>
-                    <span className="flex-1">
+                    <span className="relative z-10 flex-1">
                       <PythonLine line={ln} />
                     </span>
                     {isSkipped && (
-                      <span className="text-[10px] text-zinc-400 italic pr-1 select-none">
+                      <span className="relative z-10 text-[10px] text-zinc-400 italic pr-1 select-none">
                         skipped
                       </span>
                     )}
@@ -689,6 +1049,7 @@ export default function CodeFlowPlayground({ initialTopicId, onAskTutor }) {
                   <button
                     type="button"
                     onClick={() => {
+                      stopAudio()
                       setPlaying(false)
                       setStepIdx(0)
                     }}
@@ -770,36 +1131,90 @@ export default function CodeFlowPlayground({ initialTopicId, onAskTutor }) {
 
           {/* RIGHT: Live Visual Diagrams, Memory State & Console Output */}
           <div className="lg:col-span-6 space-y-4">
-            {step.listRibbon && <ListRibbonVisual ribbon={step.listRibbon} />}
-            {step.rangeTrack && <RangeTrackVisual track={step.rangeTrack} />}
+            {/* Subtle semantic visual legend */}
+            <div className="flex flex-wrap items-center gap-4 px-1 text-[11px] text-ink-muted">
+              <span className="inline-flex items-center gap-1.5">
+                <span
+                  className="w-2 h-2 rounded-full inline-block"
+                  style={{ backgroundColor: 'var(--accent-bar)' }}
+                />
+                <span>Index / Execution pointer</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full inline-block bg-emerald-500" />
+                <span>Value updated in memory</span>
+              </span>
+            </div>
+
+            {step.listRibbon && (
+              <ListRibbonVisual ribbon={step.listRibbon} scenarioId={scenario.id} />
+            )}
+            {step.rangeTrack && (
+              <RangeTrackVisual track={step.rangeTrack} scenarioId={scenario.id} />
+            )}
             {step.condition && <ConditionGateVisual condition={step.condition} />}
-            {step.grid2d && <Grid2DVisual grid={step.grid2d} />}
-            {step.loopTrack && <LoopTrackVisual track={step.loopTrack} />}
+            {step.grid2d && <Grid2DVisual grid={step.grid2d} scenarioId={scenario.id} />}
+            {step.loopTrack && (
+              <LoopTrackVisual track={step.loopTrack} scenarioId={scenario.id} />
+            )}
             {step.frames && <ScopeFramesVisual frames={step.frames} />}
             {step.fileState && <FileStateVisual fileState={step.fileState} />}
             {step.dictMap && <DictMapVisual dictMap={step.dictMap} />}
             {step.setBag && <SetBagVisual setBag={step.setBag} />}
 
-            {/* Variables in Memory (when not already shown via Scope Frames) */}
+            {/* Variables in Memory (Emerald for value updates + inline old -> new diff!) */}
             {step.vars && step.vars.length > 0 && !step.frames && (
               <div className="neu-inset rounded-2xl p-4 space-y-2.5">
                 <div className="text-xs font-semibold text-ink">Variables in Memory</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {step.vars.map((v) => {
-                    const isWide = String(v.value).length > 14
+                    const prevVal = prevVarsMap.get(v.name)
+                    const hasDiff = v.changed && prevVal !== undefined && prevVal !== v.value
+                    const isNew = v.changed && prevVal === undefined
+                    const isWide =
+                      String(v.value).length > 14 ||
+                      (hasDiff && String(prevVal).length + String(v.value).length > 12)
                     return (
                       <div
                         key={v.name}
-                        className={`neu-card-sm rounded-xl px-3 py-2 flex items-center justify-between gap-3 text-xs font-mono ${
+                        className={`neu-card-sm rounded-xl px-3 py-2 flex items-center justify-between gap-3 text-xs font-mono transition-shadow ${
                           isWide ? 'sm:col-span-2' : ''
                         }`}
-                        style={v.changed ? { boxShadow: '0 0 0 2px var(--accent-bar)' } : undefined}
+                        style={
+                          v.changed
+                            ? { boxShadow: '0 0 0 1.5px rgba(16, 185, 129, 0.7)' }
+                            : undefined
+                        }
                       >
                         <div className="flex items-center gap-1.5 shrink-0">
                           <span className="font-semibold text-ink">{v.name}</span>
                           <span className="text-[10px] text-ink-muted">({v.type})</span>
+                          {isNew && (
+                            <span className="px-1.5 py-0.2 rounded text-[9.5px] font-semibold bg-emerald-600/15 text-emerald-700 dark:text-emerald-300">
+                              new
+                            </span>
+                          )}
                         </div>
-                        <span className="text-ink-2 truncate text-right">{v.value}</span>
+                        <div className="flex items-center gap-1.5 min-w-0 justify-end">
+                          {hasDiff && (
+                            <span className="text-[11px] text-ink-muted line-through opacity-70 truncate">
+                              {prevVal}
+                            </span>
+                          )}
+                          {hasDiff && (
+                            <span className="text-emerald-600 dark:text-emerald-400 text-[10px]">
+                              →
+                            </span>
+                          )}
+                          <RollingValue
+                            value={v.value}
+                            className={`truncate ${
+                              v.changed
+                                ? 'font-semibold text-emerald-700 dark:text-emerald-300'
+                                : 'text-ink-2'
+                            }`}
+                          />
+                        </div>
                       </div>
                     )
                   })}
@@ -815,9 +1230,14 @@ export default function CodeFlowPlayground({ initialTopicId, onAskTutor }) {
                   <div className="text-zinc-500 italic">(no print output yet)</div>
                 ) : (
                   step.output.map((ln, idx) => (
-                    <div key={`${idx}-${ln}`} className="text-emerald-300 whitespace-pre">
+                    <motion.div
+                      key={`${idx}-${ln}`}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-emerald-300 whitespace-pre"
+                    >
                       {ln}
-                    </div>
+                    </motion.div>
                   ))
                 )}
               </div>
