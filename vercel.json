@@ -1,7 +1,7 @@
 {
   "rewrites": [
     {
-      "source": "/((?!api/|assets/|audio/).*)",
+      "source": "/((?!api/|assets/|audio/|_vercel/).*)",
       "destination": "/index.html"
     }
   ],
