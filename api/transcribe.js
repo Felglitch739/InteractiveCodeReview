@@ -22,7 +22,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing audioBase64.' })
     }
 
+    if (audioBase64.length > 2_800_000) {
+      return res.status(413).json({ error: 'Audio clip is too large. Keep voice clips under 30 seconds.' })
+    }
+
     const cleanMime = String(audioMimeType).split(';')[0] || 'audio/webm'
+    if (!cleanMime.startsWith('audio/')) {
+      return res.status(400).json({ error: 'Invalid audio MIME type.' })
+    }
     let lastErr = 'Transcription failed.'
 
     for (const model of MODEL_CHAIN) {

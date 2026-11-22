@@ -2,7 +2,13 @@ import { checkRateLimit } from './_rateLimit.js'
 
 const MODEL_CHAIN = ['gemini-flash-lite-latest', 'gemini-3.5-flash-lite', 'gemini-3.5-flash']
 
-const SYSTEM_INSTRUCTION = `You are a friendly, concise CSCI 1380 Python study tutor helping three students (Jeremy Hernández, Sara Astorga, and Felix Martinez) understand and present their Final Project Prompt #8: "Student Club Member Directory".
+const EXAM_SYSTEM_INSTRUCTION = `You are a calm, concise CSCI 1380 (Intro to Python) study tutor helping students review Weeks 1-12 for their final exam.
+- Cover only Intro to Python basics: running .py files, variables, input()/int()/float(), files (r/w/a), booleans, if/elif/else, nested conditionals, logical operators (and/or/not), for/while loops, break/continue, built-in & custom functions, print vs return, parameters & local scope, lists, tuples, sets, dictionaries, and modular program design.
+- Keep answers natural, clear, and concise (2 to 4 sentences).
+- Reply in English by default, or Spanish if the student speaks or writes in Spanish.
+- Never mention any specific student's final project code; keep examples general and beginner-friendly (no try/except, lambdas, classes, or list comprehensions).`
+
+const PROJECT_SYSTEM_INSTRUCTION = `You are a friendly, concise CSCI 1380 Python study tutor helping three students (Jeremy Hernández, Sara Astorga, and Felix Martinez) understand and present their Final Project Prompt #8: "Student Club Member Directory".
 
 Rules:
 - Explain things in clear, simple, natural English (or Spanish if the student speaks/writes Spanish).
@@ -81,18 +87,30 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { message, audioBase64, audioMimeType, history = [] } = req.body || {}
+    const { message, audioBase64, audioMimeType, history = [], scope = 'exam' } = req.body || {}
     const isAudio = Boolean(audioBase64)
+    const activeInstruction = scope === 'project' ? PROJECT_SYSTEM_INSTRUCTION : EXAM_SYSTEM_INSTRUCTION
 
     if (!isAudio && (!message || typeof message !== 'string')) {
       return res.status(400).json({ error: 'Missing message or audio.' })
     }
 
+    if (isAudio && (typeof audioBase64 !== 'string' || audioBase64.length > 2_800_000)) {
+      return res.status(413).json({ error: 'Audio clip is too large. Keep voice clips under 30 seconds.' })
+    }
+
+    if (!isAudio && message.length > 1500) {
+      return res.status(413).json({ error: 'Message is too long (max 1500 characters).' })
+    }
+
+    const rawMime = String(audioMimeType || 'audio/webm').split(';')[0]
+    const cleanMime = rawMime.startsWith('audio/') ? rawMime : 'audio/webm'
+
     const userParts = isAudio
       ? [
           {
             inlineData: {
-              mimeType: (audioMimeType || 'audio/webm').split(';')[0],
+              mimeType: cleanMime,
               data: audioBase64,
             },
           },
@@ -102,10 +120,11 @@ export default async function handler(req, res) {
         ]
       : [{ text: message }]
 
+    const safeHistory = Array.isArray(history) ? history.slice(-10) : []
     const contents = [
-      ...history.slice(-10).map((h) => ({
-        role: h.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: h.text }],
+      ...safeHistory.map((h) => ({
+        role: h?.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: String(h?.text || '').slice(0, 800) }],
       })),
       { role: 'user', parts: userParts },
     ]
@@ -127,7 +146,7 @@ export default async function handler(req, res) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+            systemInstruction: { parts: [{ text: activeInstruction }] },
             contents,
             generationConfig,
           }),

@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Mic, AudioLines, Volume2, VolumeX, Send, X, KeyRound, Loader2, Square, Trash2, Check
 } from 'lucide-react'
-import { getCleanCodeString } from '../data/projectData'
 import { GeminiLiveClient, PcmStreamPlayer } from '../utils/liveAudioEngine'
 import { blobToBase64, pickSupportedAudioMime } from '../utils/audioUtils'
 
@@ -34,12 +33,11 @@ const EXAM_SYSTEM_INSTRUCTION = `You are a calm, concise CSCI 1380 (Intro to Pyt
 - Reply in English by default, or Spanish if the student speaks or writes in Spanish.
 - Never mention any specific student's final project code; keep examples general and beginner-friendly (no try/except, lambdas, classes, or list comprehensions).`
 
-const PROJECT_SYSTEM_INSTRUCTION = `You are a calm, concise CSCI 1380 Python study tutor helping Jeremy Hernández, Sara Astorga, and Felix Martinez understand and present their Final Project Prompt #8 ("Student Club Member Directory").
-- Keep answers natural, clear, and concise (2 to 4 sentences).
-- Reply in English by default, or Spanish if the student speaks or writes in Spanish.
-- Stick strictly to basic Python from CSCI 1380 (lists, while, for, if/elif/else, functions, open/read/write/close, replace, split, string slicing [0:6] and [6:]). Never suggest try/except, lambdas, classes, or list comprehensions.
-Here is their exact code:
-${getCleanCodeString()}`
+async function getSystemInstruction(scope) {
+  if (scope !== 'project') return EXAM_SYSTEM_INSTRUCTION
+  const { getProjectSystemInstruction } = await import('../data/projectData')
+  return getProjectSystemInstruction()
+}
 
 function FormattedText({ text, isUser }) {
   const segments = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g)
@@ -110,7 +108,6 @@ function writeDailyLiveUses(count) {
 
 export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClearQueued, scope = 'exam' }) {
   const starterPrompts = scope === 'project' ? PROJECT_STARTER_PROMPTS : EXAM_STARTER_PROMPTS
-  const systemInstruction = scope === 'project' ? PROJECT_SYSTEM_INSTRUCTION : EXAM_SYSTEM_INSTRUCTION
   const showDevKeyButton = import.meta.env.DEV || scope === 'project'
   const [messages, setMessages] = useState(() => [makeWelcomeMsg(scope)])
   const [liveUsesToday, setLiveUsesToday] = useState(readDailyLiveUses)
@@ -315,9 +312,10 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
     setErrorMsg('')
     ensurePlayer()
 
+    const instruction = await getSystemInstruction(scope)
     const client = new GeminiLiveClient({
       voiceName: chosenVoice,
-      systemInstruction,
+      systemInstruction: instruction,
       directApiKey: getDirectKey(),
       onReady: () => {
         setLiveConnected(true)
@@ -377,7 +375,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
       setConnecting(false)
       setLiveConnected(false)
       liveClientRef.current = null
-      if (!getDirectKey()) setShowKeyBox(true)
+      if (showDevKeyButton && !getDirectKey()) setShowKeyBox(true)
       setErrorMsg(err.message || 'Could not connect to voice service.')
       throw err
     }
@@ -893,7 +891,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
 
             {/* Optional Local Key Box */}
             <AnimatePresence>
-              {showKeyBox && (
+              {showDevKeyButton && showKeyBox && (
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}

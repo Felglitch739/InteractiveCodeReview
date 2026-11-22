@@ -1,14 +1,20 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion'
 import { Mic, Moon, Sun, Lock } from 'lucide-react'
-import CodeMapModule from './components/CodeMapModule'
-import FileParserLab from './components/FileParserLab'
-import LiveSimulator from './components/LiveSimulator'
-import ChooseMemberTracer from './components/ChooseMemberTracer'
-import QuizAndPresentation from './components/QuizAndPresentation'
 import FinalExamReview from './components/exam/FinalExamReview'
 import VoiceTutorDrawer from './components/VoiceTutorDrawer'
-import TeamAccessGate, { isTeamUnlocked } from './components/TeamAccessGate'
+
+const CodeMapModule = lazy(() => import('./components/CodeMapModule'))
+const FileParserLab = lazy(() => import('./components/FileParserLab'))
+const LiveSimulator = lazy(() => import('./components/LiveSimulator'))
+const ChooseMemberTracer = lazy(() => import('./components/ChooseMemberTracer'))
+const QuizAndPresentation = lazy(() => import('./components/QuizAndPresentation'))
+const TeamAccessGate = lazy(() => import('./components/TeamAccessGate'))
+
+function isTeamUnlocked() {
+  if (typeof window === 'undefined') return false
+  return sessionStorage.getItem('csci1380_team_unlocked_v1') === 'true'
+}
 
 const TEAM_TABS = [
   { id: 'code', label: 'Code' },
@@ -112,6 +118,25 @@ export default function App() {
 
   const showTeamWorkspace = isTeamPortal && teamUnlocked
   const tutorScope = showTeamWorkspace && activeTab !== 'exam' ? 'project' : 'exam'
+  const [teamSubtitle, setTeamSubtitle] = useState('Private Team Portal')
+
+  useEffect(() => {
+    document.title = showTeamWorkspace
+      ? 'Student Club Member Directory — CSCI 1380'
+      : 'CSCI 1380 · Final Exam Review — Intro to Python'
+    if (!showTeamWorkspace) return
+    let cancelled = false
+    import('./data/projectData')
+      .then((mod) => {
+        if (!cancelled && mod.PROJECT_TEAM_SUBTITLE) {
+          setTeamSubtitle(mod.PROJECT_TEAM_SUBTITLE)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [showTeamWorkspace])
 
   return (
     <MotionConfig reducedMotion="user">
@@ -128,7 +153,7 @@ export default function App() {
                 </h1>
                 <p className="text-xs text-ink-muted truncate">
                   {showTeamWorkspace
-                    ? 'Private Team Portal · Jeremy Hernández, Sara Astorga & Felix Martinez'
+                    ? teamSubtitle
                     : 'Intro to Python · Code Flows, Interactive Labs & Mock Exam'}
                 </p>
               </div>
@@ -229,13 +254,21 @@ export default function App() {
         {/* Main Workspace */}
         <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8">
           {isTeamPortal && !teamUnlocked ? (
-            <TeamAccessGate
-              onUnlocked={() => {
-                setTeamUnlocked(true)
-                setActiveTab('code')
-              }}
-              onBackToPublic={goBackToPublic}
-            />
+            <Suspense
+              fallback={
+                <div className="neu-card rounded-2xl p-8 text-center text-xs text-ink-muted">
+                  Loading...
+                </div>
+              }
+            >
+              <TeamAccessGate
+                onUnlocked={() => {
+                  setTeamUnlocked(true)
+                  setActiveTab('code')
+                }}
+                onBackToPublic={goBackToPublic}
+              />
+            </Suspense>
           ) : !showTeamWorkspace ? (
             <FinalExamReview onAskTutor={handleAskTutor} />
           ) : (
@@ -247,11 +280,19 @@ export default function App() {
                 exit={{ opacity: 0, y: -6 }}
                 transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
               >
-                {activeTab === 'code' && <CodeMapModule onAskTutor={handleAskTutor} />}
-                {activeTab === 'parser' && <FileParserLab />}
-                {activeTab === 'sim' && <LiveSimulator />}
-                {activeTab === 'choose' && <ChooseMemberTracer />}
-                {activeTab === 'quiz' && <QuizAndPresentation onAskTutor={handleAskTutor} />}
+                <Suspense
+                  fallback={
+                    <div className="neu-card rounded-2xl p-8 text-center text-xs text-ink-muted">
+                      Loading...
+                    </div>
+                  }
+                >
+                  {activeTab === 'code' && <CodeMapModule onAskTutor={handleAskTutor} />}
+                  {activeTab === 'parser' && <FileParserLab />}
+                  {activeTab === 'sim' && <LiveSimulator />}
+                  {activeTab === 'choose' && <ChooseMemberTracer />}
+                  {activeTab === 'quiz' && <QuizAndPresentation onAskTutor={handleAskTutor} />}
+                </Suspense>
                 {activeTab === 'exam' && (
                   <FinalExamReview
                     onAskTutor={handleAskTutor}
