@@ -129,7 +129,7 @@ export default function App() {
                 <p className="text-xs text-ink-muted truncate">
                   {showTeamWorkspace
                     ? 'Private Team Portal · Jeremy Hernández, Sara Astorga & Felix Martinez'
-                    : 'Intro to Python · Interactive Labs & Mock Exam (Weeks 1–12)'}
+                    : 'Intro to Python · Code Flows, Interactive Labs & Mock Exam'}
                 </p>
               </div>
 

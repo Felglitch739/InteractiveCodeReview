@@ -1,9 +1,14 @@
 const KEYWORDS = new Set([
-  'def', 'return', 'if', 'elif', 'else', 'for', 'in', 'while', 'and', 'or', 'del', 'True', 'False',
+  'def', 'return', 'if', 'elif', 'else', 'for', 'in', 'while',
+  'and', 'or', 'not', 'del', 'break', 'continue', 'True', 'False', 'None',
 ])
-const BUILTINS = new Set(['print', 'input', 'len', 'range', 'str', 'open'])
+const BUILTINS = new Set([
+  'print', 'input', 'len', 'range', 'str', 'int', 'float', 'bool',
+  'open', 'list', 'tuple', 'set', 'dict', 'type', 'round', 'sum', 'min', 'max',
+])
 const FUNCS = new Set([
   'format_member', 'show_directory', 'choose_role', 'choose_member', 'save_directory',
+  'apply_discount', 'calc_average', 'demo',
 ])
 
 export default function PythonLine({ line }) {

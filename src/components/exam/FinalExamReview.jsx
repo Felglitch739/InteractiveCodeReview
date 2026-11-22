@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ArrowLeft, ArrowRight, Check, X, RotateCcw, Mic, Play
+  ArrowLeft, ArrowRight, Check, X, RotateCcw, Mic, Play, Layers
 } from 'lucide-react'
 import {
   EXAM_STORAGE_KEY,
@@ -10,10 +10,24 @@ import {
   getQuestionsForWeek,
   getMockExamQuestions,
 } from '../../data/finalExamData'
+import { CODE_FLOW_TOPICS } from '../../data/codeFlowData'
 import PythonLine from '../PythonLine'
 import WeekInteractiveLab from './WeekInteractiveLab'
+import CodeFlowPlayground from './CodeFlowPlayground'
 
 const LETTERS = ['A', 'B', 'C', 'D']
+
+const WEEK_TO_FLOW = {
+  2: 'variables-types',
+  3: 'files',
+  4: 'while-loops',
+  5: 'conditionals',
+  6: 'lists-indexing',
+  7: 'for-loops',
+  9: 'functions-scope',
+  10: 'functions-scope',
+  11: 'dicts-tuples-sets',
+}
 
 const EMPTY_PROGRESS = {
   practiceAnswers: {}, // { [qId]: chosenOptionIndex }
@@ -41,8 +55,9 @@ function loadProgress() {
 
 export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
   const [progress, setProgress] = useState(loadProgress)
-  const [mode, setMode] = useState('overview') // 'overview' | 'practice' | 'mock' | 'retry'
+  const [mode, setMode] = useState('overview') // 'overview' | 'flows' | 'practice' | 'mock' | 'retry'
   const [selectedWeek, setSelectedWeek] = useState(() => progress.lastWeek || 1)
+  const [selectedFlowId, setSelectedFlowId] = useState(CODE_FLOW_TOPICS[0].id)
   const [practiceQIdx, setPracticeQIdx] = useState(0)
 
   // Mock Exam state (strict: no hints, no solutions until submitted)
@@ -86,6 +101,12 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
     setPracticeQIdx(0)
     setProgress((p) => ({ ...p, lastWeek: weekNum }))
     setMode('practice')
+    scrollToTop()
+  }
+
+  const openCodeFlow = (topicId) => {
+    if (topicId) setSelectedFlowId(topicId)
+    setMode('flows')
     scrollToTop()
   }
 
@@ -171,6 +192,56 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
       className="space-y-6"
       data-lock-tab-keys={mode !== 'overview' ? 'true' : undefined}
     >
+      {/* Top Mode Switcher (visible on Overview & Code Flow Lab; hidden during strict Mock Exam) */}
+      {(mode === 'overview' || mode === 'flows') && (
+        <nav
+          className="neu-inset p-1.5 rounded-2xl grid grid-cols-3 sm:flex items-center gap-1 w-full sm:w-fit max-w-full"
+          aria-label="Study mode switcher"
+        >
+          {[
+            { id: 'overview', label: 'Weeks 1–12' },
+            { id: 'flows', label: 'Code Flow Lab' },
+            { id: 'mock', label: `Mock Exam (${mockQuestions.length})` },
+          ].map((item) => {
+            const active = mode === item.id
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  if (item.id === 'mock') startMockExam()
+                  else if (item.id === 'flows') openCodeFlow()
+                  else {
+                    setMode('overview')
+                    scrollToTop()
+                  }
+                }}
+                className={`relative px-2 sm:px-4 py-2 rounded-xl text-[11.5px] sm:text-[13px] font-medium whitespace-nowrap text-center transition-colors cursor-pointer ${
+                  active ? 'text-ink font-semibold' : 'text-ink-muted hover:text-ink'
+                }`}
+              >
+                {active && (
+                  <motion.div
+                    layoutId="examModePill"
+                    className="absolute inset-0 rounded-xl neu-card-sm"
+                    transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                  />
+                )}
+                <span className="relative z-10">{item.label}</span>
+              </button>
+            )
+          })}
+        </nav>
+      )}
+
+      {/* ==================== STANDALONE CODE FLOW LAB ==================== */}
+      {mode === 'flows' && (
+        <CodeFlowPlayground
+          initialTopicId={selectedFlowId}
+          onAskTutor={onAskTutor}
+        />
+      )}
+
       {/* ==================== OVERVIEW LANDING ==================== */}
       {mode === 'overview' && (
         <div className="space-y-6">
@@ -181,7 +252,7 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
                   Final Exam Review · CSCI 1380
                 </h2>
                 <p className="text-sm text-ink-2 leading-relaxed">
-                  Practice Intro to Python topics from Weeks 1–12—variables, files, conditionals, loops, functions, data structures, and modular design—through interactive exercises and a mixed mock exam.
+                  Practice Intro to Python topics from Weeks 1–12—variables, files, conditionals, loops, lists, functions, and data structures—with step-by-step code execution flows and a mixed mock exam.
                 </p>
                 <p className="text-xs text-ink-muted">
                   Practice guide based on Weekly Material (Weeks 1–12). Does not predict the actual final exam; works offline without Gemini or a mic.
@@ -200,13 +271,6 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
                       ? `Continue Week ${progress.lastWeek || 1}`
                       : 'Start Practice (Week 1)'}
                   </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={startMockExam}
-                  className="neu-btn px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold cursor-pointer"
-                >
-                  Mixed Mock Exam ({mockQuestions.length})
                 </button>
               </div>
             </div>
@@ -250,6 +314,32 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
               <p className="text-[11.5px] text-ink-muted">
                 Progress saves automatically in this browser and resets only when you click <strong>Reset progress</strong> or clear site data.
               </p>
+            </div>
+          </div>
+
+          {/* Direct Visual Code Flow Quick-Launch Strip */}
+          <div className="neu-card rounded-2xl p-5 space-y-3.5">
+            <div className="space-y-0.5">
+              <h3 className="text-sm font-semibold text-ink">
+                Visual Code Flows · Step-by-Step Tracers
+              </h3>
+              <p className="text-xs text-ink-muted">
+                Pick any topic below to watch Python execute line by line—lists & indexing, for/while loops, scope frames, files, and dicts.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {CODE_FLOW_TOPICS.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => openCodeFlow(t.id)}
+                  className="neu-btn px-3 py-2 rounded-xl text-xs font-semibold text-ink cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <span>{t.shortTitle}</span>
+                  <span className="font-mono text-[10px] text-ink-muted">{t.weekBadge}</span>
+                </button>
+              ))}
             </div>
           </div>
 
@@ -348,19 +438,31 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
               </h2>
             </div>
 
-            {onAskTutor && (
-              <button
-                type="button"
-                onClick={() =>
-                  onAskTutor(
-                    `[Final Exam Review Practice — Week ${weekObj.week}: ${weekObj.title}, CSCI 1380 beginner level] Give me a brief 3-sentence review of "${weekObj.title}" with one simple example.`
-                  )
-                }
-                className="neu-btn inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer self-start sm:self-auto"
-              >
-                <Mic className="w-3.5 h-3.5" /> Ask Tutor
-              </button>
-            )}
+            <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+              {WEEK_TO_FLOW[weekObj.week] && (
+                <button
+                  type="button"
+                  onClick={() => openCodeFlow(WEEK_TO_FLOW[weekObj.week])}
+                  className="neu-btn inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  <Layers className="w-3.5 h-3.5" /> Step-by-Step Flow
+                </button>
+              )}
+
+              {onAskTutor && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onAskTutor(
+                      `[Final Exam Review Practice — Week ${weekObj.week}: ${weekObj.title}, CSCI 1380 beginner level] Give me a brief 3-sentence review of "${weekObj.title}" with one simple example.`
+                    )
+                  }
+                  className="neu-btn inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  <Mic className="w-3.5 h-3.5" /> Ask Tutor
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Interactive Micro-Lab */}
