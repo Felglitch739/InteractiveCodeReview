@@ -61,6 +61,12 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPopState)
   }, [])
 
+  const switchTab = (tabId) => {
+    setActiveTab(tabId)
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' })
+  }
+
   const handleAskTutor = (question) => {
     setQueuedQuestion(question)
     setTutorOpen(true)
@@ -193,7 +199,7 @@ export default function App() {
                       )}
                       <button
                         type="button"
-                        onClick={() => setActiveTab(tab.id)}
+                        onClick={() => switchTab(tab.id)}
                         role="tab"
                         aria-selected={isActive}
                         className={`relative px-3.5 py-2 rounded-xl text-xs sm:text-[13px] font-medium whitespace-nowrap transition-colors cursor-pointer ${
@@ -249,7 +255,7 @@ export default function App() {
                 {activeTab === 'exam' && (
                   <FinalExamReview
                     onAskTutor={handleAskTutor}
-                    onOpenProjectTab={(tabId) => setActiveTab(tabId)}
+                    onOpenProjectTab={(tabId) => switchTab(tabId)}
                   />
                 )}
               </motion.div>

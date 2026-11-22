@@ -5,7 +5,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  if (!checkRateLimit(req, res, { bucket: 'live-token', maxPerIp: 8, maxGlobal: 80, windowMs: 10 * 60 * 1000 })) {
+  if (!checkRateLimit(req, res, { bucket: 'live-token', maxPerIp: 5, maxGlobal: 60, windowMs: 15 * 60 * 1000 })) {
     return
   }
 

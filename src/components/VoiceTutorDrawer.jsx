@@ -82,10 +82,39 @@ function makeWelcomeMsg(scope) {
   }
 }
 
+const LIVE_USES_KEY = 'csci1380_live_daily_uses_v1'
+const MAX_DAILY_LIVE_USES = 5
+
+function getTodayStamp() {
+  const d = new Date()
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
+}
+
+function readDailyLiveUses() {
+  if (typeof window === 'undefined') return 0
+  try {
+    const raw = JSON.parse(localStorage.getItem(LIVE_USES_KEY) || '{}')
+    return raw.date === getTodayStamp() ? Number(raw.count) || 0 : 0
+  } catch {
+    return 0
+  }
+}
+
+function writeDailyLiveUses(count) {
+  try {
+    localStorage.setItem(LIVE_USES_KEY, JSON.stringify({ date: getTodayStamp(), count }))
+  } catch {
+    // ignore
+  }
+}
+
 export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClearQueued, scope = 'exam' }) {
   const starterPrompts = scope === 'project' ? PROJECT_STARTER_PROMPTS : EXAM_STARTER_PROMPTS
   const systemInstruction = scope === 'project' ? PROJECT_SYSTEM_INSTRUCTION : EXAM_SYSTEM_INSTRUCTION
+  const showDevKeyButton = import.meta.env.DEV || scope === 'project'
   const [messages, setMessages] = useState(() => [makeWelcomeMsg(scope)])
+  const [liveUsesToday, setLiveUsesToday] = useState(readDailyLiveUses)
+  const liveUsesLeft = Math.max(0, MAX_DAILY_LIVE_USES - liveUsesToday)
   const [input, setInput] = useState('')
   const [voiceName, setVoiceName] = useState('Kore')
   const [speakerMuted, setSpeakerMuted] = useState(false)
@@ -533,6 +562,19 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
       stopHandsFree()
       return
     }
+    if (scope === 'exam') {
+      const used = readDailyLiveUses()
+      if (used >= MAX_DAILY_LIVE_USES) {
+        setLiveUsesToday(used)
+        setErrorMsg(
+          `Daily Live Voice limit reached (${MAX_DAILY_LIVE_USES}/${MAX_DAILY_LIVE_USES}). Resets tomorrow—you can still type questions or use all labs offline!`
+        )
+        return
+      }
+      const nextCount = used + 1
+      writeDailyLiveUses(nextCount)
+      setLiveUsesToday(nextCount)
+    }
     cleanupRecording(true)
     setErrorMsg('')
     ensurePlayer()
@@ -782,6 +824,8 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                     ? 'Hands-free live'
                     : connecting
                     ? 'Connecting...'
+                    : scope === 'exam'
+                    ? `Live left today: ${liveUsesLeft}/${MAX_DAILY_LIVE_USES}`
                     : liveConnected
                     ? 'Connected · Live Voice'
                     : 'Ready'}
@@ -822,13 +866,15 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
 
-                <button
-                  onClick={() => setShowKeyBox((v) => !v)}
-                  title="Local API key"
-                  className="neu-btn p-2 rounded-lg text-ink-2 hover:text-ink cursor-pointer"
-                >
-                  <KeyRound className="w-3.5 h-3.5" />
-                </button>
+                {showDevKeyButton && (
+                  <button
+                    onClick={() => setShowKeyBox((v) => !v)}
+                    title="Local API key"
+                    className="neu-btn p-2 rounded-lg text-ink-2 hover:text-ink cursor-pointer"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                  </button>
+                )}
 
                 <button
                   onClick={() => {
@@ -1048,8 +1094,14 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
                 <button
                   type="button"
                   onClick={startHandsFree}
-                  disabled={connecting || thinking}
-                  title="Hands-free live conversation (auto-listens & replies)"
+                  disabled={connecting || thinking || (scope === 'exam' && liveUsesLeft === 0)}
+                  title={
+                    scope === 'exam'
+                      ? liveUsesLeft > 0
+                        ? `Hands-free live mode (${liveUsesLeft}/${MAX_DAILY_LIVE_USES} left today)`
+                        : 'Daily live limit reached (5/5) — resets tomorrow'
+                      : 'Hands-free live conversation'
+                  }
                   className="neu-btn p-2.5 rounded-xl disabled:opacity-40 cursor-pointer shrink-0"
                 >
                   <AudioLines className="w-4 h-4" />

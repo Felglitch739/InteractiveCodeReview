@@ -75,11 +75,18 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
     return allRight || Boolean(progress.completedLabs[w.week])
   }).length
 
+  const scrollToTop = () => {
+    if (typeof window === 'undefined') return
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' })
+  }
+
   const startWeekPractice = (weekNum) => {
     setSelectedWeek(weekNum)
     setPracticeQIdx(0)
     setProgress((p) => ({ ...p, lastWeek: weekNum }))
     setMode('practice')
+    scrollToTop()
   }
 
   const handleLabComplete = (weekNum) => {
@@ -101,10 +108,12 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
     setMockAnswers({})
     setMockSubmitted(false)
     setMode('mock')
+    scrollToTop()
   }
 
   const submitMockExam = () => {
     setMockSubmitted(true)
+    scrollToTop()
     const correct = mockQuestions.reduce(
       (acc, q) => acc + (mockAnswers[q.id] === q.answer ? 1 : 0),
       0
@@ -127,6 +136,7 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
     setRetryIdx(0)
     setRetryAnswers({})
     setMode('retry')
+    scrollToTop()
   }
 
   const resetAllProgress = () => {
@@ -174,7 +184,7 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
                   Practice Intro to Python topics from Weeks 1–12—variables, files, conditionals, loops, functions, data structures, and modular design—through interactive exercises and a mixed mock exam.
                 </p>
                 <p className="text-xs text-ink-muted">
-                  Practice guide based on Weekly Material summaries (Weeks 1–12). It does not predict what will appear on the actual final exam. Works completely offline without Gemini or a microphone.
+                  Practice guide based on Weekly Material (Weeks 1–12). Does not predict the actual final exam; works offline without Gemini or a mic.
                 </p>
               </div>
 
@@ -238,7 +248,7 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
               </div>
 
               <p className="text-[11.5px] text-ink-muted">
-                Progress is saved locally in this browser (<span className="font-mono">{EXAM_STORAGE_KEY}</span>) and resets only when you click <strong>Reset progress</strong> or clear browser site data.
+                Progress saves automatically in this browser and resets only when you click <strong>Reset progress</strong> or clear site data.
               </p>
             </div>
           </div>
@@ -304,40 +314,29 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <button
               type="button"
-              onClick={() => setMode('overview')}
+              onClick={() => { setMode('overview'); scrollToTop() }}
               className="neu-btn inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer"
             >
               <ArrowLeft className="w-3.5 h-3.5" /> All Weeks
             </button>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={startMockExam}
-                className="neu-btn px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer"
-              >
-                Switch to Mock Exam
-              </button>
+            <div className="neu-inset p-1 rounded-2xl flex items-center gap-1 overflow-x-auto no-scrollbar max-w-full">
+              {EXAM_WEEKS.map((w) => {
+                const active = w.week === selectedWeek
+                return (
+                  <button
+                    key={w.week}
+                    type="button"
+                    onClick={() => startWeekPractice(w.week)}
+                    className={`px-2.5 py-1.5 rounded-xl font-mono text-xs font-semibold whitespace-nowrap cursor-pointer transition ${
+                      active ? 'neu-btn-primary' : 'text-ink-muted hover:text-ink'
+                    }`}
+                  >
+                    W{w.week}
+                  </button>
+                )
+              })}
             </div>
-          </div>
-
-          {/* Week 1–12 Selector Bar */}
-          <div className="neu-inset p-1.5 rounded-2xl flex items-center gap-1 overflow-x-auto no-scrollbar">
-            {EXAM_WEEKS.map((w) => {
-              const active = w.week === selectedWeek
-              return (
-                <button
-                  key={w.week}
-                  type="button"
-                  onClick={() => startWeekPractice(w.week)}
-                  className={`px-3 py-1.5 rounded-xl font-mono text-xs font-semibold whitespace-nowrap cursor-pointer transition ${
-                    active ? 'neu-btn-primary' : 'text-ink-muted hover:text-ink'
-                  }`}
-                >
-                  W{w.week}
-                </button>
-              )
-            })}
           </div>
 
           {/* Week Header */}
@@ -354,12 +353,12 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
                 type="button"
                 onClick={() =>
                   onAskTutor(
-                    `[Final Exam Review Practice — Week ${weekObj.week}: ${weekObj.title}, CSCI 1380 beginner level, separate from our club directory project] Give me a brief 3-sentence review of "${weekObj.title}" with one simple example.`
+                    `[Final Exam Review Practice — Week ${weekObj.week}: ${weekObj.title}, CSCI 1380 beginner level] Give me a brief 3-sentence review of "${weekObj.title}" with one simple example.`
                   )
                 }
                 className="neu-btn inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer self-start sm:self-auto"
               >
-                <Mic className="w-3.5 h-3.5" /> Ask Tutor (Exam Practice)
+                <Mic className="w-3.5 h-3.5" /> Ask Tutor
               </button>
             )}
           </div>
@@ -367,7 +366,7 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
           {/* Interactive Micro-Lab */}
           <div className="neu-card rounded-2xl p-5 sm:p-6 space-y-3">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
-              Interactive Activity · Week {weekObj.week}
+              Interactive Activity
             </div>
             <WeekInteractiveLab
               key={weekObj.week}
@@ -383,33 +382,12 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
           {activePracticeQ && (
             <div className="neu-card rounded-2xl p-5 sm:p-6 space-y-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="neu-inset px-2.5 py-1 rounded-lg text-[11px] font-semibold text-ink-2">
-                    {activePracticeQ.topic}
-                  </span>
-                  <span className="font-mono text-xs text-ink-muted">
-                    Question {practiceQIdx + 1} of {weekQuestions.length}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    disabled={practiceQIdx === 0}
-                    onClick={() => setPracticeQIdx((i) => Math.max(0, i - 1))}
-                    className="neu-btn px-3 py-1.5 rounded-xl text-xs font-semibold disabled:opacity-40 cursor-pointer"
-                  >
-                    Prev Q
-                  </button>
-                  <button
-                    type="button"
-                    disabled={practiceQIdx >= weekQuestions.length - 1}
-                    onClick={() => setPracticeQIdx((i) => Math.min(weekQuestions.length - 1, i + 1))}
-                    className="neu-btn px-3 py-1.5 rounded-xl text-xs font-semibold disabled:opacity-40 cursor-pointer"
-                  >
-                    Next Q
-                  </button>
-                </div>
+                <span className="neu-inset px-2.5 py-1 rounded-lg text-[11px] font-semibold text-ink-2">
+                  {activePracticeQ.topic}
+                </span>
+                <span className="font-mono text-xs text-ink-muted">
+                  Question {practiceQIdx + 1} of {weekQuestions.length}
+                </span>
               </div>
 
               <AnimatePresence mode="wait">
@@ -489,6 +467,28 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
                 </motion.div>
               </AnimatePresence>
 
+              {/* Inline Question Controls */}
+              {weekQuestions.length > 1 && (
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <button
+                    type="button"
+                    disabled={practiceQIdx === 0}
+                    onClick={() => setPracticeQIdx((i) => Math.max(0, i - 1))}
+                    className="neu-btn px-3.5 py-2 rounded-xl text-xs font-semibold disabled:opacity-40 cursor-pointer"
+                  >
+                    Previous Question
+                  </button>
+                  <button
+                    type="button"
+                    disabled={practiceQIdx >= weekQuestions.length - 1}
+                    onClick={() => setPracticeQIdx((i) => Math.min(weekQuestions.length - 1, i + 1))}
+                    className="neu-btn inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold disabled:opacity-40 cursor-pointer"
+                  >
+                    Next Question <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
               {/* Week Navigation Footer */}
               <div className="pt-4 border-t neu-divider flex items-center justify-between gap-3">
                 <button
@@ -528,7 +528,7 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <button
               type="button"
-              onClick={() => setMode('overview')}
+              onClick={() => { setMode('overview'); scrollToTop() }}
               className="neu-btn inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer"
             >
               <ArrowLeft className="w-3.5 h-3.5" /> Exit Mock Exam
@@ -819,7 +819,7 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
               ) : (
                 <button
                   type="button"
-                  onClick={() => setMode('overview')}
+                  onClick={() => { setMode('overview'); scrollToTop() }}
                   className="neu-btn-primary px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer"
                 >
                   Finish review
