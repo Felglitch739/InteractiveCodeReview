@@ -234,17 +234,33 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
         </nav>
       )}
 
+      <AnimatePresence mode="wait" initial={false}>
       {/* ==================== STANDALONE CODE FLOW LAB ==================== */}
       {mode === 'flows' && (
-        <CodeFlowPlayground
-          initialTopicId={selectedFlowId}
-          onAskTutor={onAskTutor}
-        />
+        <motion.div
+          key="mode-flows"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+        >
+          <CodeFlowPlayground
+            initialTopicId={selectedFlowId}
+            onAskTutor={onAskTutor}
+          />
+        </motion.div>
       )}
 
       {/* ==================== OVERVIEW LANDING ==================== */}
       {mode === 'overview' && (
-        <div className="space-y-6">
+        <motion.div
+          key="mode-overview"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          className="space-y-6"
+        >
           <div className="neu-card rounded-2xl p-6 sm:p-7 space-y-5">
             <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
               <div className="space-y-2 max-w-2xl">
@@ -260,8 +276,9 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
               </div>
 
               <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                <button
+                <motion.button
                   type="button"
+                  whileTap={{ scale: 0.96 }}
                   onClick={() => startWeekPractice(progress.lastWeek || 1)}
                   className="neu-btn-primary inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold cursor-pointer"
                 >
@@ -271,7 +288,7 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
                       ? `Continue Week ${progress.lastWeek || 1}`
                       : 'Start Practice (Week 1)'}
                   </span>
-                </button>
+                </motion.button>
               </div>
             </div>
 
@@ -302,12 +319,14 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
               </div>
 
               <div className="neu-inset h-2 rounded-full overflow-hidden">
-                <div
-                  style={{
+                <motion.div
+                  initial={false}
+                  animate={{
                     width: `${Math.round((masteredCount / totalUniqueQuestions) * 100)}%`,
-                    backgroundColor: 'var(--text-primary)',
                   }}
-                  className="h-full rounded-full transition-all duration-300"
+                  transition={{ type: 'spring', stiffness: 260, damping: 28 }}
+                  style={{ backgroundColor: 'var(--text-primary)' }}
+                  className="h-full rounded-full"
                 />
               </div>
 
@@ -347,7 +366,7 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-ink">Choose a Week (1–12)</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {EXAM_WEEKS.map((w) => {
+              {EXAM_WEEKS.map((w, idx) => {
                 const qs = getQuestionsForWeek(w.week)
                 const rightInWeek = qs.filter(
                   (q) => progress.practiceAnswers[q.id] === q.answer
@@ -356,9 +375,16 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
                 const allDone = rightInWeek === qs.length && (w.week === 8 || labDone)
 
                 return (
-                  <button
+                  <motion.button
                     key={w.week}
                     type="button"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      duration: 0.22,
+                      delay: Math.min(idx * 0.02, 0.22),
+                      ease: [0.22, 1, 0.36, 1],
+                    }}
                     onClick={() => startWeekPractice(w.week)}
                     className="neu-btn text-left rounded-2xl p-4 flex flex-col justify-between gap-3 cursor-pointer"
                   >
@@ -390,17 +416,24 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
                         </span>
                       ))}
                     </div>
-                  </button>
+                  </motion.button>
                 )
               })}
             </div>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* ==================== WEEKLY PRACTICE MODE ==================== */}
       {mode === 'practice' && (
-        <div className="space-y-6">
+        <motion.div
+          key="mode-practice"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          className="space-y-6"
+        >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <button
               type="button"
@@ -418,11 +451,18 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
                     key={w.week}
                     type="button"
                     onClick={() => startWeekPractice(w.week)}
-                    className={`px-2.5 py-1.5 rounded-xl font-mono text-xs font-semibold whitespace-nowrap cursor-pointer transition ${
-                      active ? 'neu-btn-primary' : 'text-ink-muted hover:text-ink'
+                    className={`relative px-2.5 py-1.5 rounded-xl font-mono text-xs font-semibold whitespace-nowrap cursor-pointer transition-colors ${
+                      active ? 'text-[var(--primary-text)]' : 'text-ink-muted hover:text-ink'
                     }`}
                   >
-                    W{w.week}
+                    {active && (
+                      <motion.div
+                        layoutId="weekPracticePill"
+                        className="absolute inset-0 rounded-xl neu-btn-primary"
+                        transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                      />
+                    )}
+                    <span className="relative z-10">W{w.week}</span>
                   </button>
                 )
               })}
@@ -547,25 +587,52 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
                             </span>
                             <span className="leading-snug">{opt}</span>
                           </div>
-                          {revealRight && <Check className="w-4 h-4 shrink-0" />}
-                          {revealWrong && <X className="w-4 h-4 shrink-0" />}
+                          {revealRight && (
+                            <motion.span
+                              initial={{ scale: 0.5, opacity: 0 }}
+                              animate={{ scale: 1, opacity: 1 }}
+                              transition={{ type: 'spring', stiffness: 500, damping: 24 }}
+                              className="shrink-0"
+                            >
+                              <Check className="w-4 h-4" />
+                            </motion.span>
+                          )}
+                          {revealWrong && (
+                            <motion.span
+                              initial={{ scale: 0.5, opacity: 0 }}
+                              animate={{ scale: 1, opacity: 1 }}
+                              transition={{ type: 'spring', stiffness: 500, damping: 24 }}
+                              className="shrink-0"
+                            >
+                              <X className="w-4 h-4" />
+                            </motion.span>
+                          )}
                         </button>
                       )
                     })}
                   </div>
 
-                  {practiceAnswered && (
-                    <div className={`rounded-xl p-4 text-xs sm:text-sm space-y-1.5 ${practiceCorrect ? 'state-ok' : 'state-err'}`}>
-                      <div className="font-semibold">
-                        {practiceCorrect
-                          ? 'Correct'
-                          : `Correct answer: ${LETTERS[activePracticeQ.answer]}) ${activePracticeQ.options[activePracticeQ.answer]}`}
-                      </div>
-                      <p className="leading-relaxed">
-                        <strong>Explanation:</strong> {activePracticeQ.explain}
-                      </p>
-                    </div>
-                  )}
+                  <AnimatePresence>
+                    {practiceAnswered && (
+                      <motion.div
+                        key={`exp-${activePracticeQ.id}`}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        className={`rounded-xl p-4 text-xs sm:text-sm space-y-1.5 ${practiceCorrect ? 'state-ok' : 'state-err'}`}
+                      >
+                        <div className="font-semibold">
+                          {practiceCorrect
+                            ? 'Correct'
+                            : `Correct answer: ${LETTERS[activePracticeQ.answer]}) ${activePracticeQ.options[activePracticeQ.answer]}`}
+                        </div>
+                        <p className="leading-relaxed">
+                          <strong>Explanation:</strong> {activePracticeQ.explain}
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </motion.div>
               </AnimatePresence>
 
@@ -621,12 +688,19 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
               </div>
             </div>
           )}
-        </div>
+        </motion.div>
       )}
 
       {/* ==================== STRICT MIXED MOCK EXAM ==================== */}
       {mode === 'mock' && (
-        <div className="max-w-3xl mx-auto space-y-5">
+        <motion.div
+          key="mode-mock"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          className="max-w-3xl mx-auto space-y-5"
+        >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <button
               type="button"
@@ -679,43 +753,54 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
 
               {/* Active Mock Question Card (NO solutions, NO hints, NO tutor) */}
               <div className="neu-card rounded-2xl p-6 space-y-5">
-                <h3 className="text-base sm:text-lg font-semibold text-ink leading-snug">
-                  {mockQuestions[mockIdx].prompt}
-                </h3>
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.div
+                    key={mockQuestions[mockIdx].id}
+                    initial={{ opacity: 0, x: 12 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -12 }}
+                    transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+                    className="space-y-5"
+                  >
+                    <h3 className="text-base sm:text-lg font-semibold text-ink leading-snug">
+                      {mockQuestions[mockIdx].prompt}
+                    </h3>
 
-                {mockQuestions[mockIdx].code && (
-                  <div className="code-well rounded-xl px-4 py-3 font-mono text-xs leading-relaxed overflow-x-auto max-w-full">
-                    {mockQuestions[mockIdx].code.split('\n').map((ln, idx) => (
-                      <div key={idx} className="whitespace-pre">
-                        <PythonLine line={ln} />
+                    {mockQuestions[mockIdx].code && (
+                      <div className="code-well rounded-xl px-4 py-3 font-mono text-xs leading-relaxed overflow-x-auto max-w-full">
+                        {mockQuestions[mockIdx].code.split('\n').map((ln, idx) => (
+                          <div key={idx} className="whitespace-pre">
+                            <PythonLine line={ln} />
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                )}
+                    )}
 
-                <div className="space-y-2.5">
-                  {mockQuestions[mockIdx].options.map((opt, oIdx) => {
-                    const isSelected = mockAnswers[mockQuestions[mockIdx].id] === oIdx
-                    return (
-                      <button
-                        key={oIdx}
-                        type="button"
-                        onClick={() =>
-                          setMockAnswers((prev) => ({
-                            ...prev,
-                            [mockQuestions[mockIdx].id]: oIdx,
-                          }))
-                        }
-                        className={`w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-medium transition cursor-pointer flex items-center gap-3 ${
-                          isSelected ? 'neu-btn-primary font-semibold' : 'neu-btn'
-                        }`}
-                      >
-                        <span className="font-mono text-xs opacity-75">{LETTERS[oIdx]}.</span>
-                        <span className="leading-snug">{opt}</span>
-                      </button>
-                    )
-                  })}
-                </div>
+                    <div className="space-y-2.5">
+                      {mockQuestions[mockIdx].options.map((opt, oIdx) => {
+                        const isSelected = mockAnswers[mockQuestions[mockIdx].id] === oIdx
+                        return (
+                          <button
+                            key={oIdx}
+                            type="button"
+                            onClick={() =>
+                              setMockAnswers((prev) => ({
+                                ...prev,
+                                [mockQuestions[mockIdx].id]: oIdx,
+                              }))
+                            }
+                            className={`w-full text-left px-4 py-3 rounded-xl text-xs sm:text-sm font-medium transition cursor-pointer flex items-center gap-3 ${
+                              isSelected ? 'neu-btn-primary font-semibold' : 'neu-btn'
+                            }`}
+                          >
+                            <span className="font-mono text-xs opacity-75">{LETTERS[oIdx]}.</span>
+                            <span className="leading-snug">{opt}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </motion.div>
+                </AnimatePresence>
 
                 <div className="pt-3 border-t neu-divider flex flex-wrap items-center justify-between gap-2">
                   <button
@@ -829,12 +914,19 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
               })()}
             </div>
           )}
-        </div>
+        </motion.div>
       )}
 
       {/* ==================== RETRY MISSED QUESTIONS ==================== */}
       {mode === 'retry' && activeRetryQ && (
-        <div className="max-w-3xl mx-auto space-y-5">
+        <motion.div
+          key="mode-retry"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          className="max-w-3xl mx-auto space-y-5"
+        >
           <div className="flex items-center justify-between gap-3">
             <button
               type="button"
@@ -929,8 +1021,9 @@ export default function FinalExamReview({ onAskTutor, onOpenProjectTab }) {
               )}
             </div>
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   )
 }

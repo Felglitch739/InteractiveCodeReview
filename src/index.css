@@ -125,17 +125,24 @@
   color: var(--text-primary);
   border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-btn);
-  transition: box-shadow 0.16s ease, transform 0.14s ease, background-color 0.16s ease;
+  transition: box-shadow 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.18s ease,
+    color 0.18s ease;
+  will-change: transform;
 }
 
-.neu-btn:hover:not(:disabled) {
-  background: var(--surface-hover);
-  box-shadow: var(--shadow-btn-hover);
+@media (hover: hover) and (pointer: fine) {
+  .neu-btn:hover:not(:disabled) {
+    background: var(--surface-hover);
+    box-shadow: var(--shadow-btn-hover);
+    transform: translateY(-1.5px);
+  }
 }
 
 .neu-btn:active:not(:disabled) {
   box-shadow: var(--shadow-inset);
-  transform: scale(0.985);
+  transform: translateY(0) scale(0.975);
 }
 
 .neu-btn-primary {
@@ -143,15 +150,21 @@
   color: var(--primary-text);
   border: 1px solid transparent;
   box-shadow: var(--primary-shadow);
-  transition: all 0.16s ease;
+  transition: background-color 0.18s ease,
+    box-shadow 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
 }
 
-.neu-btn-primary:hover:not(:disabled) {
-  background: var(--primary-bg-hover);
+@media (hover: hover) and (pointer: fine) {
+  .neu-btn-primary:hover:not(:disabled) {
+    background: var(--primary-bg-hover);
+    transform: translateY(-1.5px);
+  }
 }
 
 .neu-btn-primary:active:not(:disabled) {
-  transform: scale(0.985);
+  transform: translateY(0) scale(0.975);
 }
 
 .neu-divider {

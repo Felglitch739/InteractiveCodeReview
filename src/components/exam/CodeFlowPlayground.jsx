@@ -818,12 +818,19 @@ export default function CodeFlowPlayground({ initialTopicId, onAskTutor }) {
                 key={t.id}
                 type="button"
                 onClick={() => selectTopic(t.id)}
-                className={`px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all inline-flex items-center gap-1.5 ${
-                  active ? 'neu-btn-primary' : 'neu-btn text-ink-2'
+                className={`relative px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-colors inline-flex items-center gap-1.5 ${
+                  active ? 'text-[var(--primary-text)]' : 'neu-btn text-ink-2'
                 }`}
               >
-                <span>{t.shortTitle}</span>
-                <span className={`font-mono text-[10px] ${active ? 'opacity-75' : 'text-ink-muted'}`}>
+                {active && (
+                  <motion.div
+                    layoutId="flowTopicPill"
+                    transition={SPRING_GLIDE}
+                    className="absolute inset-0 rounded-xl neu-btn-primary pointer-events-none"
+                  />
+                )}
+                <span className="relative z-10">{t.shortTitle}</span>
+                <span className={`relative z-10 font-mono text-[10px] ${active ? 'opacity-75' : 'text-ink-muted'}`}>
                   {t.weekBadge}
                 </span>
               </button>
@@ -833,7 +840,15 @@ export default function CodeFlowPlayground({ initialTopicId, onAskTutor }) {
       </div>
 
       {/* Active Topic & Scenario Stage */}
-      <div className="neu-card rounded-2xl p-5 sm:p-6 space-y-5">
+      <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={`${topic.id}-${scenario.id}`}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -6 }}
+        transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+        className="neu-card rounded-2xl p-5 sm:p-6 space-y-5"
+      >
         {/* Scenario Header */}
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 pb-4 border-b neu-divider">
           <div className="space-y-1.5 max-w-2xl">
@@ -854,11 +869,18 @@ export default function CodeFlowPlayground({ initialTopicId, onAskTutor }) {
                       key={sc.id}
                       type="button"
                       onClick={() => selectScenario(idx)}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition ${
-                        active ? 'neu-card-sm text-ink' : 'text-ink-muted hover:text-ink'
+                      className={`relative px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
+                        active ? 'text-ink' : 'text-ink-muted hover:text-ink'
                       }`}
                     >
-                      {sc.label}
+                      {active && (
+                        <motion.div
+                          layoutId={`scenario-pill-${topic.id}`}
+                          transition={SPRING_GLIDE}
+                          className="absolute inset-0 rounded-lg neu-card-sm pointer-events-none"
+                        />
+                      )}
+                      <span className="relative z-10">{sc.label}</span>
                     </button>
                   )
                 })}
@@ -885,8 +907,9 @@ export default function CodeFlowPlayground({ initialTopicId, onAskTutor }) {
         {audioMeta && (
           <div className="neu-inset rounded-2xl p-3 sm:p-3.5 space-y-2.5">
             <div className="flex flex-wrap items-center gap-3">
-              <button
+              <motion.button
                 type="button"
+                whileTap={{ scale: 0.96 }}
                 onClick={toggleAudioWalkthrough}
                 className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer shrink-0 ${
                   audioPlaying ? 'neu-btn-primary' : 'neu-btn'
@@ -894,7 +917,21 @@ export default function CodeFlowPlayground({ initialTopicId, onAskTutor }) {
               >
                 {audioPlaying ? (
                   <>
-                    <Pause className="w-3.5 h-3.5" />
+                    <span className="flex items-end gap-[2px] h-3" aria-hidden="true">
+                      {[0, 1, 2].map((b) => (
+                        <motion.span
+                          key={b}
+                          animate={{ height: ['30%', '100%', '40%'] }}
+                          transition={{
+                            repeat: Infinity,
+                            duration: 0.55,
+                            delay: b * 0.12,
+                            ease: 'easeInOut',
+                          }}
+                          className="w-[2.5px] rounded-full bg-current"
+                        />
+                      ))}
+                    </span>
                     <span>Pause Audio</span>
                   </>
                 ) : (
@@ -903,7 +940,7 @@ export default function CodeFlowPlayground({ initialTopicId, onAskTutor }) {
                     <span>Audio Walkthrough</span>
                   </>
                 )}
-              </button>
+              </motion.button>
 
               {/* Progress scrubber */}
               <div className="flex-1 min-w-[140px] flex items-center gap-2.5">
@@ -952,11 +989,21 @@ export default function CodeFlowPlayground({ initialTopicId, onAskTutor }) {
               </div>
             </div>
 
-            {showTranscript && (
-              <p className="text-xs text-ink-2 leading-relaxed pt-2 border-t neu-divider">
-                {audioMeta.script}
-              </p>
-            )}
+            <AnimatePresence initial={false}>
+              {showTranscript && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                  className="overflow-hidden"
+                >
+                  <p className="text-xs text-ink-2 leading-relaxed pt-2 border-t neu-divider">
+                    {audioMeta.script}
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         )}
 
@@ -1117,15 +1164,26 @@ export default function CodeFlowPlayground({ initialTopicId, onAskTutor }) {
 
             {/* What Happens On This Line */}
             <div className="neu-inset rounded-2xl p-4 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-mono text-[11px] font-semibold text-ink-muted">
-                  Line {step.line} · What Python does
-                </span>
-                <span className="neu-card-sm px-2.5 py-0.5 rounded-lg text-[11px] font-semibold text-ink">
-                  {step.op}
-                </span>
-              </div>
-              <p className="text-xs sm:text-sm text-ink leading-relaxed">{step.note}</p>
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={`${scenario.id}-${stepIdx}`}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+                  className="space-y-2"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-[11px] font-semibold text-ink-muted">
+                      Line {step.line} · What Python does
+                    </span>
+                    <span className="neu-card-sm px-2.5 py-0.5 rounded-lg text-[11px] font-semibold text-ink">
+                      {step.op}
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-ink leading-relaxed">{step.note}</p>
+                </motion.div>
+              </AnimatePresence>
             </div>
           </div>
 
@@ -1244,7 +1302,8 @@ export default function CodeFlowPlayground({ initialTopicId, onAskTutor }) {
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
+      </AnimatePresence>
     </div>
   )
 }

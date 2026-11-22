@@ -178,28 +178,45 @@ export default function App() {
                   aria-label="Toggle color theme"
                   className="neu-btn inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium cursor-pointer"
                 >
-                  {theme === 'dark' ? (
-                    <>
-                      <Sun className="w-3.5 h-3.5" strokeWidth={1.8} />
-                      <span className="hidden sm:inline">Light</span>
-                    </>
-                  ) : (
-                    <>
-                      <Moon className="w-3.5 h-3.5" strokeWidth={1.8} />
-                      <span className="hidden sm:inline">Dark</span>
-                    </>
-                  )}
+                  <AnimatePresence mode="wait" initial={false}>
+                    {theme === 'dark' ? (
+                      <motion.span
+                        key="sun"
+                        initial={{ rotate: -65, scale: 0.7, opacity: 0 }}
+                        animate={{ rotate: 0, scale: 1, opacity: 1 }}
+                        exit={{ rotate: 65, scale: 0.7, opacity: 0 }}
+                        transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                        className="inline-flex items-center gap-1.5"
+                      >
+                        <Sun className="w-3.5 h-3.5" strokeWidth={1.8} />
+                        <span className="hidden sm:inline">Light</span>
+                      </motion.span>
+                    ) : (
+                      <motion.span
+                        key="moon"
+                        initial={{ rotate: 65, scale: 0.7, opacity: 0 }}
+                        animate={{ rotate: 0, scale: 1, opacity: 1 }}
+                        exit={{ rotate: -65, scale: 0.7, opacity: 0 }}
+                        transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                        className="inline-flex items-center gap-1.5"
+                      >
+                        <Moon className="w-3.5 h-3.5" strokeWidth={1.8} />
+                        <span className="hidden sm:inline">Dark</span>
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
                 </button>
 
                 {(!isTeamPortal || teamUnlocked) && (
-                  <button
+                  <motion.button
                     type="button"
+                    whileTap={{ scale: 0.96 }}
                     onClick={() => setTutorOpen(true)}
                     className="neu-btn-primary inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer"
                   >
                     <Mic className="w-3.5 h-3.5" strokeWidth={1.9} />
                     <span>Voice Tutor</span>
-                  </button>
+                  </motion.button>
                 )}
               </div>
             </div>
