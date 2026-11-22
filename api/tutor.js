@@ -1,3 +1,5 @@
+import { checkRateLimit } from './_rateLimit.js'
+
 const MODEL_CHAIN = ['gemini-flash-lite-latest', 'gemini-3.5-flash-lite', 'gemini-3.5-flash']
 
 const SYSTEM_INSTRUCTION = `You are a friendly, concise CSCI 1380 Python study tutor helping three students (Jeremy Hernández, Sara Astorga, and Felix Martinez) understand and present their Final Project Prompt #8: "Student Club Member Directory".
@@ -67,6 +69,10 @@ Sample directory.txt records:
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
+  }
+
+  if (!checkRateLimit(req, res, { bucket: 'tutor', maxPerIp: 20, maxGlobal: 160, windowMs: 10 * 60 * 1000 })) {
+    return
   }
 
   const apiKey = process.env.GEMINI_API_KEY

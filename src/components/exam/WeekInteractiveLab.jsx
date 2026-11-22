@@ -1255,26 +1255,47 @@ function Week12ModuleFlowLab({ onComplete, onOpenProjectTab }) {
 
       <div className="pt-3 border-t neu-divider space-y-2.5">
         <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
-          Function Contracts in Student Club Member Directory
+          {onOpenProjectTab ? 'Function Contracts in Student Club Member Directory' : 'Example Function Contracts in a Modular Program'}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs font-mono">
-          <div className="neu-inset rounded-xl p-3">
-            <div className="text-ink font-semibold">format_member(name, role)</div>
-            <div className="text-ink-muted mt-0.5">Returns formatted line (str)</div>
+        {onOpenProjectTab ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs font-mono">
+            <div className="neu-inset rounded-xl p-3">
+              <div className="text-ink font-semibold">format_member(name, role)</div>
+              <div className="text-ink-muted mt-0.5">Returns formatted line (str)</div>
+            </div>
+            <div className="neu-inset rounded-xl p-3">
+              <div className="text-ink font-semibold">choose_role()</div>
+              <div className="text-ink-muted mt-0.5">Returns valid role string (str)</div>
+            </div>
+            <div className="neu-inset rounded-xl p-3">
+              <div className="text-ink font-semibold">choose_member(names, roles)</div>
+              <div className="text-ink-muted mt-0.5">Returns index (int) or -1</div>
+            </div>
+            <div className="neu-inset rounded-xl p-3">
+              <div className="text-ink font-semibold">save_directory(names, roles)</div>
+              <div className="text-ink-muted mt-0.5">Writes file, returns None (void)</div>
+            </div>
           </div>
-          <div className="neu-inset rounded-xl p-3">
-            <div className="text-ink font-semibold">choose_role()</div>
-            <div className="text-ink-muted mt-0.5">Returns valid role string (str)</div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs font-mono">
+            <div className="neu-inset rounded-xl p-3">
+              <div className="text-ink font-semibold">format_record(title, status)</div>
+              <div className="text-ink-muted mt-0.5">Returns one formatted line (str)</div>
+            </div>
+            <div className="neu-inset rounded-xl p-3">
+              <div className="text-ink font-semibold">choose_option()</div>
+              <div className="text-ink-muted mt-0.5">Validates input, returns choice (str)</div>
+            </div>
+            <div className="neu-inset rounded-xl p-3">
+              <div className="text-ink font-semibold">find_item_index(items)</div>
+              <div className="text-ink-muted mt-0.5">Returns 0-based index (int) or -1</div>
+            </div>
+            <div className="neu-inset rounded-xl p-3">
+              <div className="text-ink font-semibold">save_all(filename, items)</div>
+              <div className="text-ink-muted mt-0.5">Writes file in "w" mode, returns None</div>
+            </div>
           </div>
-          <div className="neu-inset rounded-xl p-3">
-            <div className="text-ink font-semibold">choose_member(names, roles)</div>
-            <div className="text-ink-muted mt-0.5">Returns index (int) or -1</div>
-          </div>
-          <div className="neu-inset rounded-xl p-3">
-            <div className="text-ink font-semibold">save_directory(names, roles)</div>
-            <div className="text-ink-muted mt-0.5">Writes file, returns None (void)</div>
-          </div>
-        </div>
+        )}
         {onOpenProjectTab && (
           <div className="flex flex-wrap gap-2 pt-1">
             <button

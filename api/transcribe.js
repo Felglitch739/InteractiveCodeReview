@@ -1,8 +1,14 @@
+import { checkRateLimit } from './_rateLimit.js'
+
 const MODEL_CHAIN = ['gemini-flash-lite-latest', 'gemini-3.5-flash-lite', 'gemini-3.5-flash']
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
+  }
+
+  if (!checkRateLimit(req, res, { bucket: 'transcribe', maxPerIp: 18, maxGlobal: 150, windowMs: 10 * 60 * 1000 })) {
+    return
   }
 
   const apiKey = process.env.GEMINI_API_KEY

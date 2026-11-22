@@ -1,9 +1,15 @@
+import { checkRateLimit } from './_rateLimit.js'
+
 const ALLOWED_VOICES = new Set(['Kore', 'Puck', 'Zephyr', 'Fenrir', 'Aoede', 'Charon'])
 const TTS_MODELS = ['gemini-3.8-flash-lite-tts', 'gemini-3.8-flash-tts', 'gemini-2.5-flash-preview-tts']
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
+  }
+
+  if (!checkRateLimit(req, res, { bucket: 'tts', maxPerIp: 24, maxGlobal: 180, windowMs: 10 * 60 * 1000 })) {
+    return
   }
 
   const apiKey = process.env.GEMINI_API_KEY

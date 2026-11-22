@@ -16,13 +16,25 @@ const VOICES = [
   { id: 'Fenrir', label: 'Fenrir' },
 ]
 
-const STARTER_PROMPTS = [
+const EXAM_STARTER_PROMPTS = [
+  'Explain input() vs int() simply',
+  'Difference between r, w, and a file modes',
+  'Explain print vs return and local scope',
+]
+
+const PROJECT_STARTER_PROMPTS = [
   'Explain split() and [6:] simply',
   'Why does position start at -1?',
   'Difference between void and return functions',
 ]
 
-const LIVE_SYSTEM_INSTRUCTION = `You are a calm, concise CSCI 1380 Python study tutor helping Jeremy Hernández, Sara Astorga, and Felix Martinez understand and present their Final Project Prompt #8 ("Student Club Member Directory").
+const EXAM_SYSTEM_INSTRUCTION = `You are a calm, concise CSCI 1380 (Intro to Python) study tutor helping students review Weeks 1-12 for their final exam.
+- Cover only Intro to Python basics: running .py files, variables, input()/int()/float(), files (r/w/a), booleans, if/elif/else, nested conditionals, logical operators (and/or/not), for/while loops, break/continue, built-in & custom functions, print vs return, parameters & local scope, lists, tuples, sets, dictionaries, and modular program design.
+- Keep answers natural, clear, and concise (2 to 4 sentences).
+- Reply in English by default, or Spanish if the student speaks or writes in Spanish.
+- Never mention any specific student's final project code; keep examples general and beginner-friendly (no try/except, lambdas, classes, or list comprehensions).`
+
+const PROJECT_SYSTEM_INSTRUCTION = `You are a calm, concise CSCI 1380 Python study tutor helping Jeremy Hernández, Sara Astorga, and Felix Martinez understand and present their Final Project Prompt #8 ("Student Club Member Directory").
 - Keep answers natural, clear, and concise (2 to 4 sentences).
 - Reply in English by default, or Spanish if the student speaks or writes in Spanish.
 - Stick strictly to basic Python from CSCI 1380 (lists, while, for, if/elif/else, functions, open/read/write/close, replace, split, string slicing [0:6] and [6:]). Never suggest try/except, lambdas, classes, or list comprehensions.
@@ -59,14 +71,21 @@ function FormattedText({ text, isUser }) {
   )
 }
 
-const WELCOME_MSG = {
-  id: 1,
-  role: 'assistant',
-  text: 'Ask anything about your Student Club Member Directory code. Use the mic to record a voice note, the waveform icon for hands-free live mode, or type below.',
+function makeWelcomeMsg(scope) {
+  return {
+    id: 1,
+    role: 'assistant',
+    text:
+      scope === 'project'
+        ? 'Ask anything about your Student Club Member Directory code. Use the mic to record a voice note, the waveform icon for hands-free live mode, or type below.'
+        : 'Ask anything about CSCI 1380 (Weeks 1–12 Intro to Python). Tap the mic to record a voice note, the waveform icon for hands-free mode, or type below.',
+  }
 }
 
-export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClearQueued }) {
-  const [messages, setMessages] = useState([WELCOME_MSG])
+export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClearQueued, scope = 'exam' }) {
+  const starterPrompts = scope === 'project' ? PROJECT_STARTER_PROMPTS : EXAM_STARTER_PROMPTS
+  const systemInstruction = scope === 'project' ? PROJECT_SYSTEM_INSTRUCTION : EXAM_SYSTEM_INSTRUCTION
+  const [messages, setMessages] = useState(() => [makeWelcomeMsg(scope)])
   const [input, setInput] = useState('')
   const [voiceName, setVoiceName] = useState('Kore')
   const [speakerMuted, setSpeakerMuted] = useState(false)
@@ -113,6 +132,25 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
   const hfBusyRef = useRef(false) // true while transcribing or tutor speaking
   const modelSpeakingRef = useRef(false)
   const thinkingRef = useRef(false)
+
+  const idleTimerRef = useRef(null)
+
+  const bumpIdleTimer = () => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+    // Auto-close idle Live WebSocket after 90s of inactivity to protect Gemini API quota
+    idleTimerRef.current = setTimeout(() => {
+      if (!hfActiveRef.current && !modelSpeakingRef.current) {
+        liveClientRef.current?.close()
+        liveClientRef.current = null
+        setLiveConnected(false)
+      }
+    }, 90000)
+  }
+
+  useEffect(() => {
+    setMessages([makeWelcomeMsg(scope)])
+    disconnectAll()
+  }, [scope])
 
   useEffect(() => {
     modelSpeakingRef.current = modelSpeaking
@@ -224,6 +262,10 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
   }
 
   const disconnectAll = () => {
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current)
+      idleTimerRef.current = null
+    }
     liveClientRef.current?.close()
     liveClientRef.current = null
     setLiveConnected(false)
@@ -246,11 +288,12 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
 
     const client = new GeminiLiveClient({
       voiceName: chosenVoice,
-      systemInstruction: LIVE_SYSTEM_INSTRUCTION,
+      systemInstruction,
       directApiKey: getDirectKey(),
       onReady: () => {
         setLiveConnected(true)
         setConnecting(false)
+        bumpIdleTimer()
       },
       onModelTranscript: (chunk) => {
         if (!chunk) return
@@ -282,6 +325,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
       onTurnComplete: () => {
         setThinking(false)
         activeModelMsgIdRef.current = null
+        bumpIdleTimer()
       },
       onError: (msg) => {
         setErrorMsg(msg)
@@ -699,7 +743,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
     cleanupRecording(true)
     disconnectAll()
     setErrorMsg('')
-    setMessages([WELCOME_MSG])
+    setMessages([makeWelcomeMsg(scope)])
   }
 
   const formatTimer = (sec) => `0:${String(sec).padStart(2, '0')}`
@@ -890,7 +934,7 @@ export default function VoiceTutorDrawer({ open, onClose, queuedQuestion, onClea
 
             {/* Starter Prompts */}
             <div className="px-5 pb-2.5 flex flex-wrap gap-1.5">
-              {STARTER_PROMPTS.map((p) => (
+              {starterPrompts.map((p) => (
                 <button
                   key={p}
                   onClick={() => sendTextMessage(p)}

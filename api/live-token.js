@@ -1,6 +1,12 @@
+import { checkRateLimit } from './_rateLimit.js'
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
+  }
+
+  if (!checkRateLimit(req, res, { bucket: 'live-token', maxPerIp: 8, maxGlobal: 80, windowMs: 10 * 60 * 1000 })) {
+    return
   }
 
   const apiKey = process.env.GEMINI_API_KEY
